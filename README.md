@@ -137,24 +137,6 @@ Make sure to hit the correct save button!
 
 > Join [#taut](https://hackclub.slack.com/archives/C0A057686SF) on the [Hack Club Slack](https://hackclub.com/slack)!
 
-## Compared to other mods
-
-|  | Taut | [Slick](https://github.com/3kh0/slick) | [Rope](https://github.com/anirudhb/rope) |
-| --- | --- | --- | --- |
-| Plugins | **33** | **35** | 8 |
-| Desktop app | **Windows, macOS and Linux, x64 and ARM** | **Windows, macOS and Linux, x64 and ARM** | No |
-| Browser | **Chrome, Firefox and a userscript, with every plugin** | Firefox (experimental), only some plugins | Userscript |
-| Linux packages | **AppImage, deb, rpm, pacman, apt and dnf repos, Nix, all on ARM too** | **AppImage, deb, rpm, Flatpak, Nix, AUR (Nix and AUR x64 only)** | - |
-| macOS | **dmg, Homebrew** | dmg, install script | - |
-| Custom plugins | **Install and update them in settings, no reload** | No | No |
-| Updates | **Updates when you reload Slack, desktop app updates itself** | Asks to update | Manual |
-| Depends on your Slack install | **No** | Yes | **No** |
-| Privacy | Blocks Slack's tracking, has opt-out usage statistics | Blocks Slack's tracking | - |
-| Last updated | **Active** | **Active** | July 2026 |
-| License | GPLv3 or later | GPLv3 | None listed |
-
-Updated October 2026.
-
 ## Usage
 
 Open `Preferences` > `Taut` for Taut settings:

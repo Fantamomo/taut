@@ -138,16 +138,7 @@ const end = readme.indexOf(END)
 if (start === -1 || end < start) {
   throw new Error(`[readme] README.md has no "${BEGIN}" ... "${END}" block`)
 }
-// the Taut column of the comparison table's first row
-const COUNT = /^(\| Plugins \| (?:\*\*)?)\d+((?:\*\*)? \|)/m
-if (!COUNT.test(readme)) {
-  throw new Error('[readme] README.md has no "| Plugins | <count> |" table row')
-}
-const next =
-  `${readme.slice(0, start)}${lines.join('\n')}${readme.slice(end + END.length)}`.replace(
-    COUNT,
-    `$1${plugins.length}$2`
-  )
+const next = `${readme.slice(0, start)}${lines.join('\n')}${readme.slice(end + END.length)}`
 
 if (next === readme) {
   console.log('[readme] already up to date')
