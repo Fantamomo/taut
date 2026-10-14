@@ -115,6 +115,7 @@ export function initMonaco(): Promise<Monaco> {
     const monacoLoader =
       monacoLoaderModule.default as typeof import('@monaco-editor/loader').default
     const _monaco = await monacoLoader.init()
+    delete global.define?.amd
     monaco = _monaco
 
     applyJsonSchemas()

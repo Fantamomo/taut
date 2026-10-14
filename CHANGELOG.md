@@ -9,6 +9,10 @@ Each release is a `## x.y.z` heading, and each change is one bullet:
 - `- **Plugin Name**: Fixed what was broken` for a plugin fix
 - `- What changed` for a change to Taut itself
 
+## 3.0.3
+
+- Fixed the "View message activity" window crashing
+
 ## 3.0.1
 
 - Fixed Slack never loading for some people after Slack's second update on October 1st
