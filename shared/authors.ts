@@ -50,7 +50,7 @@ export const AUTHORS = {
   fantamomo: {
     name: 'Fantamomo',
     slackId: 'U0905G0BRU5',
-    url: 'https://github.com/Fantamomo'
+    url: 'https://github.com/Fantamomo',
   },
 } as const satisfies Record<string, Author>
 
