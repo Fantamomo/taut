@@ -18,7 +18,7 @@ export default class Nicknames extends TautPlugin<typeof Nicknames> {
   static readonly id = 'Nicknames'
   static readonly pluginName = 'Nicknames'
   static readonly description = 'Locally nickname other members across Slack'
-  static readonly authors = ['jeremy'] as const
+  static readonly authors = ['jeremy', 'izie'] as const
   static readonly category = 'people'
   static readonly defaultConfig = {
     enabled: true,
