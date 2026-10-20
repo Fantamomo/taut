@@ -2,6 +2,8 @@
 
 import { type MenuTemplateItem, TautPlugin } from '$taut'
 
+const NICKNAME_KEY = 'taut-nicknames__set'
+
 type NicknameMap = Record<string, string>
 
 type MenuFromTemplateProps = { template?: MenuTemplateItem[] }
@@ -81,13 +83,7 @@ export default class Nicknames extends TautPlugin<typeof Nicknames> {
           if (idx !== -1 && !already) {
             const next = [
               ...template.slice(0, idx + 1),
-              {
-                key: 'taut-nicknames__set',
-                label: this.nicknames[memberId]
-                  ? 'Edit nickname...'
-                  : 'Set nickname...',
-                click: () => this.openNicknameModal(memberId),
-              },
+              this.nicknameMenuItem(memberId),
               ...template.slice(idx + 1),
             ]
             return <Original {...props} template={next} />
@@ -95,6 +91,36 @@ export default class Nicknames extends TautPlugin<typeof Nicknames> {
         }
         return <Original {...props} />
       }
+    )
+
+    // Slack's right-click menu on a person (their name or avatar) gets its items
+    // from this thunk, so extend whatever it returns
+    this.api.redux.patchThunk(
+      'getMemberContextMenuTemplate',
+      (original) =>
+        (...args: unknown[]) => {
+          const memberId = (args[0] as { id?: string } | undefined)?.id
+          const extend = (template: unknown) => {
+            if (
+              !memberId ||
+              !Array.isArray(template) ||
+              template.some((it) => it?.key === NICKNAME_KEY)
+            ) {
+              return template
+            }
+            return [
+              ...template,
+              { key: 'taut-nicknames__separator', type: 'separator' },
+              this.nicknameMenuItem(memberId),
+            ]
+          }
+          const called = original(...args)
+          // a thunk creator: Slack dispatches what it returns
+          if (typeof called === 'function') {
+            return (...thunkArgs: unknown[]) => extend(called(...thunkArgs))
+          }
+          return extend(called)
+        }
     )
 
     this.api.setStyle(
@@ -154,6 +180,14 @@ export default class Nicknames extends TautPlugin<typeof Nicknames> {
     )
 
     this.log('Started')
+  }
+
+  private nicknameMenuItem(memberId: string): MenuTemplateItem {
+    return {
+      key: NICKNAME_KEY,
+      label: this.nicknames[memberId] ? 'Edit nickname...' : 'Set nickname...',
+      click: () => this.openNicknameModal(memberId),
+    }
   }
 
   private setNickname(userId: string, nickname: string) {
@@ -288,8 +322,9 @@ export default class Nicknames extends TautPlugin<typeof Nicknames> {
     if (!ids.length) {
       return (
         <p className="taut-nicknames__hint">
-          No nicknames yet. Open someone's profile, click the "..." menu, and
-          choose "Set nickname".
+          No nicknames yet. Right-click someone's name and choose "Set
+          nickname", or open their profile, click the "..." menu, and choose
+          "Set nickname".
         </p>
       )
     }
