@@ -142,7 +142,7 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
       this.log('Removing secrets')
 
       // only in taut 3.0.0 was the deleteSecret method added
-      // so a simple check if it exists, if not we just write an empty object
+      // so a simple check if it exists, if not, we just write an empty object
       if (this.bridge.deleteSecret) {
         await this.bridge.deleteSecret(WEB_TOKENS)
         await this.bridge.deleteSecret(WEB_TOKEN_DECLINED)
@@ -322,7 +322,7 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
   }
 
   /** the saved web token for this team, or null if we don't have one / user declined */
-  private async ensureWebToken(): Promise<string | null> {
+  private async ensureWebToken(userId: string): Promise<string | null> {
     const team = getActiveTeam()?.id
 
     if (!team) return null
@@ -342,14 +342,17 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
     // several profile panes could theoretically hit the permission error around the same
     // time, only show one dialog and let everyone else wait on its result
     if (!this.tokenPromptPending) {
-      this.tokenPromptPending = this.promptForToken(team).finally(() => {
+      this.tokenPromptPending = this.promptForToken(team, userId).finally(() => {
         this.tokenPromptPending = null
       })
     }
     return this.tokenPromptPending
   }
 
-  private promptForToken(team: string): Promise<string | null> {
+  private promptForToken(
+    team: string,
+    userId: string
+  ): Promise<string | null> {
     return new Promise((resolve) => {
       let settled = false
       const settle = (value: string | null) => {
@@ -374,16 +377,17 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
           body: (
             <div>
               <p>
-                The removeTokens option is currently enabled in the settings.
+                The Remove Tokens option is currently enabled in the settings.
                 Please disable it if you want to use this feature.
               </p>
             </div>
           ),
         })
+        return
       }
 
       this.api.modal.openModal({
-        title: 'Token for installed apps',
+        title: `Connect Installed Apps`,
         submitText: 'Close',
         showCancelButton: false,
         onClose: () => {
@@ -395,19 +399,49 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
         body: (
           <this.TokenPromptBody
             onSave={async (token) => {
-              const storedTokensText =
-                (await this.bridge.readSecret(WEB_TOKENS)) ?? '{}'
-              const storedTokens: { [key: string]: string } =
-                JSON.parse(storedTokensText)
-              const newTokens = JSON.stringify({
-                ...storedTokens,
-                [team]: token,
-              })
-              await this.bridge.writeSecret(WEB_TOKENS, newTokens)
+              const result = await this.tryFetchInstalledApps(userId, token)
 
-              this.log('Saved token')
+              if (!result.ok) {
+                this.log('Token validation failed', result.error)
+
+                return {
+                  ok: false,
+                  message: this.looksLikePermissionError(result.error)
+                    ? 'Slack rejected this token or it does not have the required permissions. Make sure you copied the token from the correct account and try again.'
+                    : 'The token could not be verified. Check your connection and make sure you copied the complete token.',
+                }
+              }
+
+              try {
+                const storedTokensText =
+                  (await this.bridge.readSecret(WEB_TOKENS)) ?? '{}'
+                const storedTokens: { [key: string]: string } =
+                  JSON.parse(storedTokensText)
+                const newTokens = JSON.stringify({
+                  ...storedTokens,
+                  [team]: token,
+                })
+                await this.bridge.writeSecret(WEB_TOKENS, newTokens)
+              } catch (err) {
+                this.log('Failed to save token', err)
+
+                return {
+                  ok: false,
+                  message:
+                    'The token works, but it could not be saved. Please notify the plugin author',
+                }
+              }
+
+              this.useWebToken = true
+              this.installsCache.set(userId, result.apps)
+              this.log('Token validated and saved')
               settle(token)
               ;(this.api.modal as any)?.closeModal?.()
+
+              return {
+                ok: true,
+                message: 'Token verified and saved successfully.',
+              }
             }}
             onDecline={async () => {
               const declinedText =
@@ -428,47 +462,124 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
   }
 
   private TokenPromptBody = (props: {
-    onSave: (token: string) => void
+    onSave: (
+      token: string
+    ) => Promise<{ ok: boolean; message: string }>
     onDecline: () => void
   }) => {
     const [value, setValue] = React.useState('')
     const [saving, setSaving] = React.useState(false)
+    const [feedback, setFeedback] = React.useState<{
+      ok: boolean
+      message: string
+    } | null>(null)
 
     const save = async () => {
       const token = value.trim()
-      if (!token) return
+      if (!token || saving) return
+
       setSaving(true)
-      await props.onSave(token)
+      setFeedback(null)
+
+      try {
+        const result = await props.onSave(token)
+        setFeedback(result)
+      } catch (err) {
+        this.log('Token validation failed unexpectedly', err)
+        setFeedback({
+          ok: false,
+          message:
+            'Something went wrong while checking the token. Please try again.',
+        })
+      } finally {
+        setSaving(false)
+      }
     }
 
     return (
       <div className="taut-installed-apps__token-prompt">
         <p>
-          We dont have the required rights to access installed apps information.
-          If you want to use this feature, just open a browser and copy the
-          xoxp- token from there. (Due to unknown reasons, the web app token has
-          more rights than the current client token.)
+          To show which apps a Slack user has installed, this plugin needs
+          access to Slack's app management data. Your current Slack session
+          does not have the permissions required to retrieve this information.
         </p>
-        <textarea
+        <p>
+          You can provide a web token from your own Slack session. It will be
+          saved locally for this Slack workspace and checked before it is saved.
+        </p>
+        <ol>
+          <li>
+            Open Slack's app management page using the button below.
+            Make sure you are signed in with the same Slack account you use here.
+          </li>
+          <li>
+            Open your browser's developer tools, then select the Network tab.
+          </li>
+          <li>
+            Reload the page and select a request to Slack's API.
+          </li>
+          <li>
+            In the request details, find the authorization token and copy its
+            value. Do not share this token with anyone.
+          </li>
+          <li>
+            Paste the token into the field below and select Verify and save.
+          </li>
+        </ol>
+        <a
+          className="taut-installed-apps__token-link"
+          href="https://app.slack.com/apps-manage"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open Slack app management
+        </a>
+        <label
+          className="taut-installed-apps__token-label"
+          htmlFor="taut-installed-apps-token"
+        >
+          Slack web token for ${getActiveTeam()?.name}
+        </label>
+        <input
+          id="taut-installed-apps-token"
           className="taut-installed-apps__token-input"
-          placeholder="xoxp-..."
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="Paste your Slack token here (starts with xoxc-)"
           value={value}
-          onChange={(e) => setValue(e.currentTarget.value)}
-          rows={3}
+          onChange={(e) => {
+            setValue(e.currentTarget.value)
+            setFeedback(null)
+          }}
+          disabled={saving}
         />
+        {feedback ? (
+          <div
+            className={`taut-installed-apps__token-feedback ${
+              feedback.ok
+                ? 'taut-installed-apps__token-feedback--success'
+                : 'taut-installed-apps__token-feedback--error'
+            }`}
+            role="status"
+          >
+            {feedback.message}
+          </div>
+        ) : null}
         <div className="taut-installed-apps__token-actions">
           <button
             className="taut-installed-apps__token-btn taut-installed-apps__token-btn--secondary"
             onClick={props.onDecline}
+            disabled={saving}
           >
-            No thanks
+            Not now
           </button>
           <button
             className="taut-installed-apps__token-btn taut-installed-apps__token-btn--primary"
             disabled={!value.trim() || saving}
             onClick={save}
           >
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? 'Verifying…' : 'Verify and save'}
           </button>
         </div>
       </div>
@@ -493,7 +604,7 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
       }
 
       // second attempt: try with the web token
-      const token = await this.ensureWebToken()
+      const token = await this.ensureWebToken(userId)
       if (!token) return null
       // set to true, to avoid retrying with the normal token every time
       this.useWebToken = true
@@ -817,15 +928,63 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
       .taut-installed-apps__token-prompt p {
         margin: 0 0 12px;
       }
+      .taut-installed-apps__token-prompt ol {
+        margin: 0 0 16px;
+        padding-left: 22px;
+      }
+      .taut-installed-apps__token-prompt li {
+        margin-bottom: 6px;
+      }
+      .taut-installed-apps__token-link {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        width: 100%;
+        margin: 0 0 16px;
+        padding: 10px 14px;
+        border-radius: 6px;
+        background: #007a5a;
+        color: white;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 600;
+        text-align: center;
+      }
+      .taut-installed-apps__token-link:hover {
+        background: #006448;
+      }
+      .taut-installed-apps__token-label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 12px;
+        font-weight: 600;
+      }
       .taut-installed-apps__token-input {
+        display: block;
         width: 100%;
         box-sizing: border-box;
-        padding: 8px;
+        padding: 9px;
         border-radius: 6px;
         border: 1px solid rgba(134, 134, 134, 0.35);
         font-family: monospace;
         font-size: 12px;
         resize: vertical;
+      }
+      .taut-installed-apps__token-feedback {
+        margin-top: 10px;
+        padding: 9px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .taut-installed-apps__token-feedback--success {
+        color: #007a5a;
+        background: rgba(0, 122, 90, 0.10);
+      }
+      .taut-installed-apps__token-feedback--error {
+        color: #b42318;
+        background: rgba(180, 35, 24, 0.08);
       }
       .taut-installed-apps__token-actions {
         display: flex;
@@ -839,6 +998,10 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
         padding: 7px 14px;
         font-size: 13px;
         cursor: pointer;
+      }
+      .taut-installed-apps__token-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
       }
       .taut-installed-apps__token-btn--secondary {
         background: rgba(134, 134, 134, 0.14);
