@@ -1,9 +1,13 @@
 // Shows which apps a user has installed on their profile, and who has
 // installed/authorized a given app on that app's profile/about page.
 
-import { opt, TautPlugin } from '$taut'
-import type { NormalizedBridge } from '../app/bridgeCompat.ts'
-import { getActiveTeam } from '../app/slack/localConfig.ts'
+import { TautPlugin } from '$taut'
+import {
+  getActiveTeam,
+  readLocalConfig,
+  type LocalConfig,
+  type LocalConfigTeam,
+} from '../app/slack/localConfig.ts'
 
 const MARKETPLACE_BASE = 'https://slack.com/marketplace'
 
@@ -12,17 +16,13 @@ const INSTALLS_TTL = 30 * 60 * 1000 // 30 min
 // marketplace page data (authorizations, features, bot memberships)
 const APP_PAGE_TTL = 60 * 60 * 1000 // 60 min
 
-// the secret names for writing the secrets
-// while there is a config option called secret to store secrets,
-// it only allows the user to write input, so we wouldn't be able to modify them
-const WEB_TOKENS = 'installedApps.webToken'
-const WEB_TOKEN_DECLINED = 'installedApps.webTokenDeclined'
-
-// list of api request error, that we use to determine if a user has insufficient permissions
+// list of api request errors, that we use to determine if the current session
+// cannot use admin.apps.installed.list, so we try the next session of the same login
 const PERMISSION_ERROR_HINTS = [
   'invalid_auth',
   'enterprise_is_restricted',
   'not_authorized',
+  'not_allowed_token_type',
   'missing_scope',
   'account_inactive',
 ]
@@ -79,13 +79,10 @@ type AppProps = {
   memberId?: string
 }
 
-type ProfileProps = {
-  member?: {
-    id?: string
-    display_name?: string
-    real_name?: string
-    name?: string
-  }
+type ProfileShellProps = {
+  profileId?: string
+  uiComponentName?: string
+  children?: React.ReactNode
 }
 
 function iconOf(icons: Record<string, string> | undefined): string | undefined {
@@ -109,12 +106,6 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
   static readonly hackClubOnly = false
   static readonly defaultConfig = {
     enabled: false,
-    // we store secrets in the secret store, which is not directly connected to this app,
-    // so the clear cache/data button in the plugin settings cannot remove them. So we use this config value,
-    removeTokens: opt(
-      false,
-      'Set to true to remove tokens (unselect after, to readd tokens)'
-    ),
   }
 
   /** key: user id -> apps that admin.apps.installed.list reports for them */
@@ -128,45 +119,64 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
     { ttl: APP_PAGE_TTL, maxSize: 500 }
   )
 
-  /** in-flight token dialog, so parallel profile panes share one prompt */
-  private tokenPromptPending: Promise<string | null> | null = null
-
-  // I couldn't find a better way to get the bridge which has the methods for storing secrets
-  private bridge = (globalThis as any).__tautPluginManager
-    .bridge as NormalizedBridge
-
-  private useWebToken = false
+  /** remembers which session (team id) worked last, per account, so we don't retry the failing ones every time */
+  private sessionChoice: { account?: string; teamId?: string } = {}
 
   async start() {
-    if (this.config.removeTokens) {
-      this.log('Removing secrets')
-
-      // only in taut 3.0.0 was the deleteSecret method added
-      // so a simple check if it exists, if not, we just write an empty object
-      if (this.bridge.deleteSecret) {
-        await this.bridge.deleteSecret(WEB_TOKENS)
-        await this.bridge.deleteSecret(WEB_TOKEN_DECLINED)
-      } else {
-        await this.bridge.writeSecret(WEB_TOKENS, '{}')
-        await this.bridge.writeSecret(WEB_TOKEN_DECLINED, '{}')
-      }
-    }
-
     await this.installsCache.load()
     if (this.api.signal.aborted) return
     await this.appPageCache.load()
     if (this.api.signal.aborted) return
 
-    // patching the Content component to add the AppInstallersBlock on the app profile page
+    // patching the Content component to add the InstalledAppsBlock on the user profile
+    // and the AppInstallersBlock on the app profile page
     this.api.patchComponent<{ children?: unknown }>(
       'Content',
       (Original) => (props) => {
-        const children = (props as any)?.children
-        const existing = children?.props?.children
+        const children = props.children
+        if (!React.isValidElement<ProfileShellProps>(children))
+          return <Original {...props} />
+        const existing = children.props.children
         if (!Array.isArray(existing)) return <Original {...props} />
 
+        // This is the profile's scrollable body, after bio, recent DMs, and custom fields.
+        // Match the known shell directly; no recursive profile scan.
+        const userId = children.props.profileId
+        if (
+          children.props.uiComponentName === 'rimeto_member_profile_flexpane' &&
+          userId &&
+          /^[UW][A-Z0-9]+$/.test(userId)
+        ) {
+          const sections = existing.map((child) => {
+            if (
+              !React.isValidElement<{
+                'data-qa'?: string
+                children?: React.ReactNode
+              }>(child) ||
+              child.props['data-qa'] !== 'member_profile_pane'
+            )
+              return child
+            return React.cloneElement(
+              child,
+              undefined,
+              child.props.children,
+              <this.InstalledAppsBlock
+                key="taut-installed-apps"
+                userId={userId}
+                profile
+              />
+            )
+          })
+          return (
+            <Original
+              {...props}
+              children={React.cloneElement(children, undefined, ...sections)}
+            />
+          )
+        }
+
         // finding the AppDetailsOverflow component, which contains all the info we need
-        // (I tried patching AppDetailsOverflow but then the resulting layout was broken with no way (that i know) to fix it)
+        // (I tried patching AppDetailsOverflow but then the resulting layout was broken with no way (that I know) to fix it)
         const info = this.findAppDetailsOverflow(props.children)
         const appId = info?.appId
 
@@ -174,25 +184,14 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
 
         const newChildren = [
           ...existing,
-          <this.AppInstallersBlock appId={info.appId} />,
+          <this.AppInstallersBlock key="taut-app-installers" appId={appId} />,
         ]
 
-        return <Original {...props} children={newChildren} />
-      }
-    )
-
-    // patching the RimetoProfilePresence component
-    // (that is on every user profile and tells if the user is currently active) to add the InstalledAppsBlock
-    this.api.patchComponent<ProfileProps>(
-      'RimetoProfilePresence',
-      (Original) => (props) => {
-        const userId = props.member?.id
-        if (!userId) return <Original {...props} />
         return (
-          <>
-            <Original {...props} />
-            <this.InstalledAppsBlock userId={userId} />
-          </>
+          <Original
+            {...props}
+            children={React.cloneElement(children, undefined, ...newChildren)}
+          />
         )
       }
     )
@@ -265,11 +264,29 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
     )
   }
 
-  // --- web token for admin.apps.installed.list --------------------------
+  // --- sessions for admin.apps.installed.list ---------------------------
 
   private looksLikePermissionError(message: string): boolean {
     const lower = message.toLowerCase()
     return PERMISSION_ERROR_HINTS.some((hint) => lower.includes(hint))
+  }
+
+  private appSessions(
+    active: LocalConfigTeam | undefined,
+    config: LocalConfig
+  ): LocalConfigTeam[] {
+    if (!active?.id || !active.user_id || !active.token) return []
+    return [
+      active,
+      ...Object.values(config.teams ?? {}).filter(
+        (team) =>
+          team.id !== active.id &&
+          team.user_id === active.user_id &&
+          team.token &&
+          typeof team.enterprise_id === 'string' &&
+          team.enterprise_id === active.id
+      ),
+    ]
   }
 
   private async tryFetchInstalledApps(
@@ -279,8 +296,8 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
     { ok: true; apps: InstalledApp[] } | { ok: false; error: string }
   > {
     // that is actually crazy, the admin.apps.installed.list is an undocumented API endpoint,
-    // but it is used on the app mange page (which is accessible by anyone) to show the installed apps,+
-    // with a slack client token we cannot fetch the installed apps, but with a web token (of the same account) we can
+    // but it is used on the app mange page (which is accessible by anyone) to show the installed apps,
+    // with a slack enterprise client token we cannot fetch the installed apps, but with a token of the workspace (of the same account) we can
     // thats the reason for the tokenOverride parameter
     // (ask salesforce why)
     try {
@@ -321,299 +338,44 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
     }
   }
 
-  /** the saved web token for this team, or null if we don't have one / user declined */
-  private async ensureWebToken(userId: string): Promise<string | null> {
-    const team = getActiveTeam()?.id
-
-    if (!team) return null
-
-    const tokensText = await this.bridge.readSecret(WEB_TOKENS)
-    if (tokensText) {
-      const tokens: { [key: string]: string } = JSON.parse(tokensText)
-      if (tokens[team]) return tokens[team]
-    }
-
-    const declinedText = await this.bridge.readSecret(WEB_TOKEN_DECLINED)
-    if (declinedText) {
-      const declined: { [key: string]: boolean } = JSON.parse(declinedText)
-      if (declined[team]) return null
-    }
-
-    // several profile panes could theoretically hit the permission error around the same
-    // time, only show one dialog and let everyone else wait on its result
-    if (!this.tokenPromptPending) {
-      this.tokenPromptPending = this.promptForToken(team, userId).finally(() => {
-        this.tokenPromptPending = null
-      })
-    }
-    return this.tokenPromptPending
-  }
-
-  private promptForToken(
-    team: string,
-    userId: string
-  ): Promise<string | null> {
-    return new Promise((resolve) => {
-      let settled = false
-      const settle = (value: string | null) => {
-        if (settled) return
-        settled = true
-        resolve(value)
-      }
-
-      this.log('Opening token prompt')
-
-      if (this.config.removeTokens) {
-        this.api.modal.openModal({
-          title: 'Please unselect the removeTokens option in the settings',
-          submitText: 'Close',
-          showCancelButton: false,
-          onClose: () => {
-            settle(null)
-          },
-          onSubmit: () => {
-            settle(null)
-          },
-          body: (
-            <div>
-              <p>
-                The Remove Tokens option is currently enabled in the settings.
-                Please disable it if you want to use this feature.
-              </p>
-            </div>
-          ),
-        })
-        return
-      }
-
-      this.api.modal.openModal({
-        title: `Connect Installed Apps`,
-        submitText: 'Close',
-        showCancelButton: false,
-        onClose: () => {
-          settle(null)
-        },
-        onSubmit: () => {
-          settle(null)
-        },
-        body: (
-          <this.TokenPromptBody
-            onSave={async (token) => {
-              const result = await this.tryFetchInstalledApps(userId, token)
-
-              if (!result.ok) {
-                this.log('Token validation failed', result.error)
-
-                return {
-                  ok: false,
-                  message: this.looksLikePermissionError(result.error)
-                    ? 'Slack rejected this token or it does not have the required permissions. Make sure you copied the token from the correct account and try again.'
-                    : 'The token could not be verified. Check your connection and make sure you copied the complete token.',
-                }
-              }
-
-              try {
-                const storedTokensText =
-                  (await this.bridge.readSecret(WEB_TOKENS)) ?? '{}'
-                const storedTokens: { [key: string]: string } =
-                  JSON.parse(storedTokensText)
-                const newTokens = JSON.stringify({
-                  ...storedTokens,
-                  [team]: token,
-                })
-                await this.bridge.writeSecret(WEB_TOKENS, newTokens)
-              } catch (err) {
-                this.log('Failed to save token', err)
-
-                return {
-                  ok: false,
-                  message:
-                    'The token works, but it could not be saved. Please notify the plugin author',
-                }
-              }
-
-              this.useWebToken = true
-              this.installsCache.set(userId, result.apps)
-              this.log('Token validated and saved')
-              settle(token)
-              ;(this.api.modal as any)?.closeModal?.()
-
-              return {
-                ok: true,
-                message: 'Token verified and saved successfully.',
-              }
-            }}
-            onDecline={async () => {
-              const declinedText =
-                (await this.bridge.readSecret(WEB_TOKEN_DECLINED)) ?? '{}'
-              const declined: { [key: string]: boolean } =
-                JSON.parse(declinedText)
-              const newDeclined = JSON.stringify({ ...declined, [team]: true })
-              await this.bridge.writeSecret(WEB_TOKEN_DECLINED, newDeclined)
-
-              this.log('Declined token')
-              settle(null)
-              ;(this.api.modal as any)?.closeModal?.()
-            }}
-          />
-        ),
-      })
-    })
-  }
-
-  private TokenPromptBody = (props: {
-    onSave: (
-      token: string
-    ) => Promise<{ ok: boolean; message: string }>
-    onDecline: () => void
-  }) => {
-    const [value, setValue] = React.useState('')
-    const [saving, setSaving] = React.useState(false)
-    const [feedback, setFeedback] = React.useState<{
-      ok: boolean
-      message: string
-    } | null>(null)
-
-    const save = async () => {
-      const token = value.trim()
-      if (!token || saving) return
-
-      setSaving(true)
-      setFeedback(null)
-
-      try {
-        const result = await props.onSave(token)
-        setFeedback(result)
-      } catch (err) {
-        this.log('Token validation failed unexpectedly', err)
-        setFeedback({
-          ok: false,
-          message:
-            'Something went wrong while checking the token. Please try again.',
-        })
-      } finally {
-        setSaving(false)
-      }
-    }
-
-    return (
-      <div className="taut-installed-apps__token-prompt">
-        <p>
-          To show which apps a Slack user has installed, this plugin needs
-          access to Slack's app management data. Your current Slack session
-          does not have the permissions required to retrieve this information.
-        </p>
-        <p>
-          You can provide a web token from your own Slack session. It will be
-          saved locally for this Slack workspace and checked before it is saved.
-        </p>
-        <ol>
-          <li>
-            Open Slack's app management page using the button below.
-            Make sure you are signed in with the same Slack account you use here.
-          </li>
-          <li>
-            Open your browser's developer tools, then select the Network tab.
-          </li>
-          <li>
-            Reload the page and select a request to Slack's API.
-          </li>
-          <li>
-            In the request details, find the authorization token and copy its
-            value. Do not share this token with anyone.
-          </li>
-          <li>
-            Paste the token into the field below and select Verify and save.
-          </li>
-        </ol>
-        <a
-          className="taut-installed-apps__token-link"
-          href="https://app.slack.com/apps-manage"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Open Slack app management
-        </a>
-        <label
-          className="taut-installed-apps__token-label"
-          htmlFor="taut-installed-apps-token"
-        >
-          Slack web token for {getActiveTeam()?.name}
-        </label>
-        <input
-          id="taut-installed-apps-token"
-          className="taut-installed-apps__token-input"
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="Paste your Slack token here (starts with xoxc-)"
-          value={value}
-          onChange={(e) => {
-            setValue(e.currentTarget.value)
-            setFeedback(null)
-          }}
-          disabled={saving}
-        />
-        {feedback ? (
-          <div
-            className={`taut-installed-apps__token-feedback ${
-              feedback.ok
-                ? 'taut-installed-apps__token-feedback--success'
-                : 'taut-installed-apps__token-feedback--error'
-            }`}
-            role="status"
-          >
-            {feedback.message}
-          </div>
-        ) : null}
-        <div className="taut-installed-apps__token-actions">
-          <button
-            className="taut-installed-apps__token-btn taut-installed-apps__token-btn--secondary"
-            onClick={props.onDecline}
-            disabled={saving}
-          >
-            Not now
-          </button>
-          <button
-            className="taut-installed-apps__token-btn taut-installed-apps__token-btn--primary"
-            disabled={!value.trim() || saving}
-            onClick={save}
-          >
-            {saving ? 'Verifying…' : 'Verify and save'}
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   // --- installed apps (per user) ------------------------------------------
 
   private async fetchInstalledApps(
     userId: string
   ): Promise<InstalledApp[] | null> {
     return this.installsCache.fetch(userId, async () => {
-      if (!this.useWebToken) {
-        // first attempt: try with the current token
-        const first = await this.tryFetchInstalledApps(userId)
-        if (first.ok) return first.apps
-        if (!this.looksLikePermissionError(first.error)) {
-          // seams like it failed due to some other reason
-          this.log('fetchInstalledApps failed', first.error)
-          return null
+      const config = readLocalConfig()
+      const team = getActiveTeam(config)
+      const account =
+        team?.id && team.user_id ? `${team.id}:${team.user_id}` : undefined
+
+      // different account -> forget which session worked
+      if (account !== this.sessionChoice.account)
+        this.sessionChoice = { account }
+
+      const sessions = this.appSessions(team, config)
+
+      // try the session that worked last first
+      const preferred = sessions.find(
+        (session) => session.id === this.sessionChoice.teamId
+      )
+      const ordered = preferred
+        ? [preferred, ...sessions.filter((session) => session !== preferred)]
+        : sessions
+
+      let lastError = 'No active Slack session'
+      for (const session of ordered) {
+        const result = await this.tryFetchInstalledApps(userId, session.token)
+        if (result.ok) {
+          this.sessionChoice.teamId = session.id
+          return result.apps
         }
+        lastError = result.error
+        // seems like it failed due to some other reason, another session won't help
+        if (!this.looksLikePermissionError(result.error)) break
       }
 
-      // second attempt: try with the web token
-      const token = await this.ensureWebToken(userId)
-      if (!token) return null
-      // set to true, to avoid retrying with the normal token every time
-      this.useWebToken = true
-
-      const second = await this.tryFetchInstalledApps(userId, token)
-      if (second.ok) return second.apps
-
-      this.log('fetchInstalledApps failed even with web token', second.error)
-      this.useWebToken = false
+      this.log('fetchInstalledApps failed', lastError)
       return null
     })
   }
@@ -635,12 +397,13 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
     return `slack://app?id=${appId}&tab=more_info`
   }
 
-  private InstalledAppsBlock = (props: { userId?: string }) => {
+  private InstalledAppsBlock = (props: { userId?: string; profile?: boolean }) => {
+    const className = `taut-installed-apps${props.profile ? ' p-r_member_profile_section taut-installed-apps-profile' : ''}`
     const apps = this.useInstalledApps(props.userId)
     if (!apps || apps.length === 0) return null
 
     return (
-      <div className="taut-installed-apps">
+      <div className={className}>
         <div className="taut-installed-apps__heading">
           Installed apps ({apps.length})
         </div>
@@ -881,6 +644,11 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      .taut-installed-apps.taut-installed-apps-profile {
+        display: block;
+        padding: 16px;
+        border-top: 0;
+      }
       .taut-app-installers__list {
         display: flex;
         flex-direction: column;
@@ -919,101 +687,6 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
       .taut-app-installers__memberships-label {
         opacity: 0.7;
         margin-bottom: 4px;
-      }
-      .taut-installed-apps__token-prompt {
-        max-width: 420px;
-        font-size: 13px;
-        line-height: 1.5;
-      }
-      .taut-installed-apps__token-prompt p {
-        margin: 0 0 12px;
-      }
-      .taut-installed-apps__token-prompt ol {
-        margin: 0 0 16px;
-        padding-left: 22px;
-      }
-      .taut-installed-apps__token-prompt li {
-        margin-bottom: 6px;
-      }
-      .taut-installed-apps__token-link {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-sizing: border-box;
-        width: 100%;
-        margin: 0 0 16px;
-        padding: 10px 14px;
-        border-radius: 6px;
-        background: #007a5a;
-        color: white;
-        text-decoration: none;
-        font-size: 13px;
-        font-weight: 600;
-        text-align: center;
-      }
-      .taut-installed-apps__token-link:hover {
-        background: #006448;
-      }
-      .taut-installed-apps__token-label {
-        display: block;
-        margin-bottom: 6px;
-        font-size: 12px;
-        font-weight: 600;
-      }
-      .taut-installed-apps__token-input {
-        display: block;
-        width: 100%;
-        box-sizing: border-box;
-        padding: 9px;
-        border-radius: 6px;
-        border: 1px solid rgba(134, 134, 134, 0.35);
-        font-family: monospace;
-        font-size: 12px;
-        resize: vertical;
-      }
-      .taut-installed-apps__token-feedback {
-        margin-top: 10px;
-        padding: 9px 10px;
-        border-radius: 6px;
-        font-size: 12px;
-        line-height: 1.5;
-      }
-      .taut-installed-apps__token-feedback--success {
-        color: #007a5a;
-        background: rgba(0, 122, 90, 0.10);
-      }
-      .taut-installed-apps__token-feedback--error {
-        color: #b42318;
-        background: rgba(180, 35, 24, 0.08);
-      }
-      .taut-installed-apps__token-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-        margin-top: 12px;
-      }
-      .taut-installed-apps__token-btn {
-        border: 0;
-        border-radius: 6px;
-        padding: 7px 14px;
-        font-size: 13px;
-        cursor: pointer;
-      }
-      .taut-installed-apps__token-btn:disabled {
-        opacity: 0.5;
-        cursor: default;
-      }
-      .taut-installed-apps__token-btn--secondary {
-        background: rgba(134, 134, 134, 0.14);
-        color: inherit;
-      }
-      .taut-installed-apps__token-btn--primary {
-        background: #007a5a;
-        color: white;
-      }
-      .taut-installed-apps__token-btn--primary:disabled {
-        opacity: 0.5;
-        cursor: default;
       }
       .taut-about-scroll-wrapper {
         display: flex;
