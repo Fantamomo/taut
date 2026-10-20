@@ -1,9 +1,9 @@
 // Shows which apps a user has installed on their profile, and who has
 // installed/authorized a given app on that app's profile/about page.
 
-import {opt, TautPlugin} from '$taut'
-import type {NormalizedBridge} from "../app/bridgeCompat.ts";
-import { getActiveTeam } from "../app/slack/localConfig.ts";
+import { opt, TautPlugin } from '$taut'
+import type { NormalizedBridge } from '../app/bridgeCompat.ts'
+import { getActiveTeam } from '../app/slack/localConfig.ts'
 
 const MARKETPLACE_BASE = 'https://slack.com/marketplace'
 
@@ -74,9 +74,9 @@ type AppPageData = {
 }
 
 type AppProps = {
-  appId?: string,
-  appUserId?: string,
-  memberId?: string,
+  appId?: string
+  appUserId?: string
+  memberId?: string
 }
 
 type ProfileProps = {
@@ -103,7 +103,7 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
   static readonly id = 'InstalledApps'
   static readonly pluginName = 'Installed Apps'
   static readonly description =
-    "Shows which apps a user has installed on their profile, and who has installed a given app on its profile/about page"
+    'Shows which apps a user has installed on their profile, and who has installed a given app on its profile/about page'
   static readonly authors = ['fantamomo'] as const
   static readonly category = 'app'
   static readonly hackClubOnly = false
@@ -111,31 +111,35 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
     enabled: false,
     // we store secrets in the secret store, which is not directly connected to this app,
     // so the clear cache/data button in the plugin settings cannot remove them. So we use this config value,
-    removeTokens: opt(false, 'Set to true to remove tokens (unselect after, to readd tokens)'),
+    removeTokens: opt(
+      false,
+      'Set to true to remove tokens (unselect after, to readd tokens)'
+    ),
   }
 
   /** key: user id -> apps that admin.apps.installed.list reports for them */
   private installsCache = new this.api.Cache<InstalledApp[] | null>(
     'installed_apps',
-    {ttl: INSTALLS_TTL, maxSize: 2000}
+    { ttl: INSTALLS_TTL, maxSize: 2000 }
   )
   /** key: app id -> parsed data-automount-props from the marketplace page */
   private appPageCache = new this.api.Cache<AppPageData | null>(
     'app_directory_page',
-    {ttl: APP_PAGE_TTL, maxSize: 500}
+    { ttl: APP_PAGE_TTL, maxSize: 500 }
   )
 
   /** in-flight token dialog, so parallel profile panes share one prompt */
   private tokenPromptPending: Promise<string | null> | null = null
 
   // I couldn't find a better way to get the bridge which has the methods for storing secrets
-  private bridge = (globalThis as any).__tautPluginManager.bridge as NormalizedBridge
+  private bridge = (globalThis as any).__tautPluginManager
+    .bridge as NormalizedBridge
 
   private useWebToken = false
 
   async start() {
     if (this.config.removeTokens) {
-      this.log('Removing secrets');
+      this.log('Removing secrets')
 
       // only in taut 3.0.0 was the deleteSecret method added
       // so a simple check if it exists, if not we just write an empty object
@@ -168,9 +172,12 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
 
         if (!appId) return <Original {...props} />
 
-        const newChildren = [...existing, <this.AppInstallersBlock appId={info.appId}/>]
+        const newChildren = [
+          ...existing,
+          <this.AppInstallersBlock appId={info.appId} />,
+        ]
 
-        return <Original {...props} children={newChildren}/>
+        return <Original {...props} children={newChildren} />
       }
     )
 
@@ -184,7 +191,7 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
         return (
           <>
             <Original {...props} />
-            <this.InstalledAppsBlock userId={userId}/>
+            <this.InstalledAppsBlock userId={userId} />
           </>
         )
       }
@@ -192,31 +199,35 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
 
     // patching the AboutPage component to add the AppInstallersBlock on the apps about page
     this.api.patchComponent<{
-      appId?: string,
+      appId?: string
       children?: unknown
-    }>(
-      'AboutPage',
-      (Original) => (props) => {
-        const appId = props.appId
-        if (!appId || !appId.startsWith('A')) return <Original {...props} />
+    }>('AboutPage', (Original) => (props) => {
+      const appId = props.appId
+      if (!appId || !appId.startsWith('A')) return <Original {...props} />
 
-        // the wrappers are necessary so that a scroll bar is shown
-        return (
-          <div className="taut-about-scroll-wrapper">
-            <div className="taut-about-scroll-wrapper__original">
-              <Original {...props}/>
-            </div>
-            <this.AppInstallersBlock key="taut-app-installers" appId={appId} app_about_screen={true}/>
+      // the wrappers are necessary so that a scroll bar is shown
+      return (
+        <div className="taut-about-scroll-wrapper">
+          <div className="taut-about-scroll-wrapper__original">
+            <Original {...props} />
           </div>
-        )
-      }
-    )
+          <this.AppInstallersBlock
+            key="taut-app-installers"
+            appId={appId}
+            app_about_screen={true}
+          />
+        </div>
+      )
+    })
 
     this.injectStyles()
     this.log('Started')
   }
 
-  private findAppDetailsOverflow(node: unknown, depth = 0): AppProps | undefined {
+  private findAppDetailsOverflow(
+    node: unknown,
+    depth = 0
+  ): AppProps | undefined {
     if (!node || depth > 12) return undefined
 
     if (Array.isArray(node)) {
@@ -232,24 +243,26 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
     const props = (node as any)?.props
     if (this.isProfileProps(props)) return props as AppProps
 
-    if (props?.children) return this.findAppDetailsOverflow(props.children, depth + 1)
+    if (props?.children)
+      return this.findAppDetailsOverflow(props.children, depth + 1)
     return undefined
   }
 
-
   private isProfileProps(obj: unknown): obj is AppProps {
-    if (typeof obj !== "object" || obj === null) {
-      return false;
+    if (typeof obj !== 'object' || obj === null) {
+      return false
     }
 
-    const profile = obj as Record<string, unknown>;
+    const profile = obj as Record<string, unknown>
 
     return (
-      (profile.appId !== undefined || typeof profile.appId === "string") &&
-      (profile.appUserId !== undefined || typeof profile.appUserId === "string") &&
-      (profile.memberId !== undefined || typeof profile.memberId === "string") &&
-      (profile.isAppVIP !== undefined || typeof profile.isAppVIP === "boolean")
-    );
+      (profile.appId !== undefined || typeof profile.appId === 'string') &&
+      (profile.appUserId !== undefined ||
+        typeof profile.appUserId === 'string') &&
+      (profile.memberId !== undefined ||
+        typeof profile.memberId === 'string') &&
+      (profile.isAppVIP !== undefined || typeof profile.isAppVIP === 'boolean')
+    )
   }
 
   // --- web token for admin.apps.installed.list --------------------------
@@ -262,14 +275,16 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
   private async tryFetchInstalledApps(
     userId: string,
     tokenOverride?: string
-  ): Promise<{ ok: true; apps: InstalledApp[] } | { ok: false; error: string }> {
+  ): Promise<
+    { ok: true; apps: InstalledApp[] } | { ok: false; error: string }
+  > {
     // that is actually crazy, the admin.apps.installed.list is an undocumented API endpoint,
     // but it is used on the app mange page (which is accessible by anyone) to show the installed apps,+
     // with a slack client token we cannot fetch the installed apps, but with a web token (of the same account) we can
     // thats the reason for the tokenOverride parameter
     // (ask salesforce why)
     try {
-      let apps: InstalledApp[] = []
+      const apps: InstalledApp[] = []
       let nextCursor: string | undefined
       let iter = 0
       do {
@@ -281,23 +296,23 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
             legacy_integrations: 'false',
             ...(nextCursor ? { cursor: nextCursor } : {}),
             // userAPI already provides the client token, but we can override it
-            ...(tokenOverride ? {token: tokenOverride} : {})
+            ...(tokenOverride ? { token: tokenOverride } : {}),
           },
           {
             signal: this.api.signal,
           }
         )
-        this.log('Fetched installed apps:', res);
-        apps.push(...(res.apps ?? []));
+        this.log('Fetched installed apps:', res)
+        apps.push(...(res.apps ?? []))
         iter++
         if (iter > 15) {
           // no normal person has over 15.000 apps
           break
         }
-        nextCursor = res.response_metadata?.next_cursor ?? undefined;
-      } while (nextCursor);
+        nextCursor = res.response_metadata?.next_cursor ?? undefined
+      } while (nextCursor)
 
-      return {ok: true, apps: apps}
+      return { ok: true, apps: apps }
     } catch (err) {
       return {
         ok: false,
@@ -359,10 +374,11 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
           body: (
             <div>
               <p>
-                The removeTokens option is currently enabled in the settings. Please disable it if you want to use this feature.
+                The removeTokens option is currently enabled in the settings.
+                Please disable it if you want to use this feature.
               </p>
             </div>
-          )
+          ),
         })
       }
 
@@ -379,22 +395,29 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
         body: (
           <this.TokenPromptBody
             onSave={async (token) => {
-              const storedTokensText = await this.bridge.readSecret(WEB_TOKENS) ?? '{}';
-              const storedTokens: { [key: string]: string } = JSON.parse(storedTokensText)
-              const newTokens = JSON.stringify({ ...storedTokens, [team]: token });
+              const storedTokensText =
+                (await this.bridge.readSecret(WEB_TOKENS)) ?? '{}'
+              const storedTokens: { [key: string]: string } =
+                JSON.parse(storedTokensText)
+              const newTokens = JSON.stringify({
+                ...storedTokens,
+                [team]: token,
+              })
               await this.bridge.writeSecret(WEB_TOKENS, newTokens)
 
-              this.log('Saved token');
+              this.log('Saved token')
               settle(token)
               ;(this.api.modal as any)?.closeModal?.()
             }}
             onDecline={async () => {
-              const declinedText = await this.bridge.readSecret(WEB_TOKEN_DECLINED) ?? '{}';
-              const declined: { [key: string]: boolean } = JSON.parse(declinedText)
+              const declinedText =
+                (await this.bridge.readSecret(WEB_TOKEN_DECLINED)) ?? '{}'
+              const declined: { [key: string]: boolean } =
+                JSON.parse(declinedText)
               const newDeclined = JSON.stringify({ ...declined, [team]: true })
               await this.bridge.writeSecret(WEB_TOKEN_DECLINED, newDeclined)
 
-              this.log('Declined token');
+              this.log('Declined token')
               settle(null)
               ;(this.api.modal as any)?.closeModal?.()
             }}
@@ -422,8 +445,9 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
       <div className="taut-installed-apps__token-prompt">
         <p>
           We dont have the required rights to access installed apps information.
-          If you want to use this feature, just open a browser and copy the xoxp- token from there.
-          (Due to unknown reasons, the web app token has more rights than the current client token.)
+          If you want to use this feature, just open a browser and copy the
+          xoxp- token from there. (Due to unknown reasons, the web app token has
+          more rights than the current client token.)
         </p>
         <textarea
           className="taut-installed-apps__token-input"
@@ -491,8 +515,7 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
       if (!userId) return
       this.fetchInstalledApps(userId)
         .then(setApps)
-        .catch(() => {
-        })
+        .catch(() => {})
     }, [userId])
     return apps
   }
@@ -523,9 +546,13 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
                 rel="noreferrer"
               >
                 {icon ? (
-                  <img className="taut-installed-apps__icon" src={icon} alt=""/>
+                  <img
+                    className="taut-installed-apps__icon"
+                    src={icon}
+                    alt=""
+                  />
                 ) : (
-                  <span className="taut-installed-apps__icon taut-installed-apps__icon--placeholder"/>
+                  <span className="taut-installed-apps__icon taut-installed-apps__icon--placeholder" />
                 )}
                 <span className="taut-installed-apps__name">{app.name}</span>
               </a>
@@ -557,7 +584,7 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
       const doc = new DOMParser().parseFromString(html, 'text/html')
 
       // helper function
-      const read = <T, >(name: string): T | undefined => {
+      const read = <T,>(name: string): T | undefined => {
         const el = doc.querySelector(`[data-automount-component="${name}"]`)
         // the parser already decodes HTML entities in attribute values,
         // so this is plain JSON text at this point
@@ -599,8 +626,7 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
       if (!appId) return
       this.fetchAppData(appId)
         .then(setData)
-        .catch(() => {
-        })
+        .catch(() => {})
     }, [appId])
     return data
   }
@@ -621,11 +647,11 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
     return (
       <div className="taut-app-installers__row">
         {avatar ? (
-          <img className="taut-app-installers__avatar" src={avatar} alt=""/>
+          <img className="taut-app-installers__avatar" src={avatar} alt="" />
         ) : (
-          <span className="taut-app-installers__avatar taut-app-installers__avatar--placeholder"/>
+          <span className="taut-app-installers__avatar taut-app-installers__avatar--placeholder" />
         )}
-        <this.api.elements.MrkdwnElement text={`<@${props.userId}>`}/>
+        <this.api.elements.MrkdwnElement text={`<@${props.userId}>`} />
         <span className="taut-app-installers__name">{name}</span>
       </div>
     )
@@ -636,10 +662,13 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
     if (!Mrkdwn) return <>{props.channelIds.join(', ')}</>
 
     const text = props.channelIds.map((id) => `<#${id}>`).join('  ')
-    return <Mrkdwn text={text}/>
+    return <Mrkdwn text={text} />
   }
 
-  private AppInstallersBlock = (props: { appId?: string, app_about_screen?: boolean }) => {
+  private AppInstallersBlock = (props: {
+    appId?: string
+    app_about_screen?: boolean
+  }) => {
     const data = this.useAppData(props.appId)
     const auths = data?.authorizations?.authorizations
     const memberships = data?.botUser?.memberships
@@ -648,7 +677,8 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
 
     return (
       <div
-        className={`p-app_space_profile__section taut-app-installers taut-app-installers-app`}>
+        className={`p-app_space_profile__section taut-app-installers taut-app-installers-app`}
+      >
         <div className="taut-app-installers__heading">
           Installed / authorized by ({auths.length})
         </div>
@@ -663,7 +693,8 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
         </div>
         {memberships && memberships.length > 0 ? (
           <div
-            className={`taut-app-installers__memberships${props.app_about_screen ? ' taut-app-installers__memberships--about-screen' : ''}`}>
+            className={`taut-app-installers__memberships${props.app_about_screen ? ' taut-app-installers__memberships--about-screen' : ''}`}
+          >
             <div className="taut-app-installers__memberships-label">
               In {memberships.length} channel
               {memberships.length === 1 ? '' : 's'}
@@ -672,7 +703,7 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
                 : ''}
               :
             </div>
-            <this.ChannelMentions channelIds={memberships}/>
+            <this.ChannelMentions channelIds={memberships} />
           </div>
         ) : null}
       </div>
