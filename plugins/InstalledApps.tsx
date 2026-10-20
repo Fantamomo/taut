@@ -538,7 +538,7 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
           className="taut-installed-apps__token-label"
           htmlFor="taut-installed-apps-token"
         >
-          Slack web token for ${getActiveTeam()?.name}
+          Slack web token for {getActiveTeam()?.name}
         </label>
         <input
           id="taut-installed-apps-token"
