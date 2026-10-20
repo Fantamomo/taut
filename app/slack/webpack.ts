@@ -49,11 +49,23 @@ export const byName =
   (exp) =>
     typeof exp === 'function' && exp.name === name
 
-/** matches a function export by the `meta.name` Slack gives its selectors, thunks and actions */
+// we need to keep track of names, they're not always on the meta anymore
+const selectorNames = new WeakMap<(...args: any[]) => any, string>()
+
+/** store the name so `byMeta` can find it later */
+export function nameSelector(
+  selector: (...args: any[]) => any,
+  name: string
+): void {
+  selectorNames.set(selector, name)
+}
+
+/** matches a function export by the `meta.name` Slack gives its thunks and actions, or the name we stored */
 export const byMeta =
   (name: string): SimpleMatcher =>
   (exp) =>
-    typeof exp === 'function' && exp.meta?.name === name
+    typeof exp === 'function' &&
+    (exp.meta?.name ?? selectorNames.get(exp)) === name
 
 function matchExportOrProps(exports: any, matcher: SimpleMatcher): any {
   try {
