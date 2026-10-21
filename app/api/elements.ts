@@ -164,7 +164,7 @@ export type HintProps = {
 }
 
 export type SelectOption = {
-  /** shown in the list and the closed select, so it can hold an emoji like `<MrkdwnElement text=":tada:" />` */
+  /** a node instead of a string, like `<MrkdwnElement text=":tada:" />`, loses Slack's typeahead and screen reader text */
   label: React.ReactNode
   value: string
 }

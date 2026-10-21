@@ -9,6 +9,11 @@ Each release is a `## x.y.z` heading, and each change is one bullet:
 - `- **Plugin Name**: Fixed what was broken` for a plugin fix
 - `- What changed` for a change to Taut itself
 
+## 3.1.2
+
+- **Nicknames**: Set a nickname from the right-click menu on someone's name or avatar
+- **Haiku Warning**: Shows a banner when your message is a haiku, detection is more accurate, and more channels are skipped
+
 ## 3.1.0
 
 - **Huddle Activity** (new plugin): Shows who muted you or anyone else in a huddle, and logs renames, theme and language changes, invites, knocks, and transcription

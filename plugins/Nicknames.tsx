@@ -2,8 +2,6 @@
 
 import { type MenuTemplateItem, TautPlugin } from '$taut'
 
-const NICKNAME_KEY = 'taut-nicknames__set'
-
 type NicknameMap = Record<string, string>
 
 type MenuFromTemplateProps = { template?: MenuTemplateItem[] }
@@ -93,33 +91,21 @@ export default class Nicknames extends TautPlugin<typeof Nicknames> {
       }
     )
 
-    // Slack's right-click menu on a person (their name or avatar) gets its items
-    // from this thunk, so extend whatever it returns
+    // the right-click menu on a member's name or avatar
     this.api.redux.patchThunk(
       'getMemberContextMenuTemplate',
       (original) =>
-        (...args: unknown[]) => {
-          const memberId = (args[0] as { id?: string } | undefined)?.id
-          const extend = (template: unknown) => {
-            if (
-              !memberId ||
-              !Array.isArray(template) ||
-              template.some((it) => it?.key === NICKNAME_KEY)
-            ) {
-              return template
-            }
+        (args: { id?: string }, ...rest: unknown[]) => {
+          const thunk = original(args, ...rest)
+          return (...thunkArgs: unknown[]) => {
+            const template: MenuTemplateItem[] = thunk(...thunkArgs)
+            if (!args?.id) return template
             return [
               ...template,
               { key: 'taut-nicknames__separator', type: 'separator' },
-              this.nicknameMenuItem(memberId),
+              this.nicknameMenuItem(args.id),
             ]
           }
-          const called = original(...args)
-          // a thunk creator: Slack dispatches what it returns
-          if (typeof called === 'function') {
-            return (...thunkArgs: unknown[]) => extend(called(...thunkArgs))
-          }
-          return extend(called)
         }
     )
 
@@ -184,7 +170,7 @@ export default class Nicknames extends TautPlugin<typeof Nicknames> {
 
   private nicknameMenuItem(memberId: string): MenuTemplateItem {
     return {
-      key: NICKNAME_KEY,
+      key: 'taut-nicknames__set',
       label: this.nicknames[memberId] ? 'Edit nickname...' : 'Set nickname...',
       click: () => this.openNicknameModal(memberId),
     }
@@ -323,8 +309,7 @@ export default class Nicknames extends TautPlugin<typeof Nicknames> {
       return (
         <p className="taut-nicknames__hint">
           No nicknames yet. Right-click someone's name and choose "Set
-          nickname", or open their profile, click the "..." menu, and choose
-          "Set nickname".
+          nickname".
         </p>
       )
     }
