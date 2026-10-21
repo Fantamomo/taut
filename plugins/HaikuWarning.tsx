@@ -95,10 +95,12 @@ export default class HaikuWarning extends TautPlugin<typeof HaikuWarning> {
                 data-context-bar
               >
                 <div className="p-context_bar_v2__icon">
-                  <this.api.elements.SvgIcon name="warning" />
+                  <this.api.elements.MrkdwnElement text=":orpheus-woah:" />
                 </div>
                 <div className="p-context_bar_v2__content">
-                  Orpheus may repeat this haiku in the thread
+                  <this.api.elements.MrkdwnElement
+                    text={`*That's a haiku!* Orpheus will repeat it in the thread, where you can't delete it.${this.config.holdSend ? ' Send again to send anyway.' : ''}`}
+                  />
                 </div>
                 <div className="p-context_bar_v2__filler" />
               </div>
