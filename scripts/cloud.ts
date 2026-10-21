@@ -28,7 +28,8 @@ browser, profile and dev server, and each named tab in it gets its own window
 (default name: main). State, ports and logs go in tmp-cloud/.
 
 up                   starts the dev server, Xvfb and Chromium unless they're
-                     running, and opens the tab at $SLACK_URL unless it's open
+                     running, and opens the tab at $SLACK_URL unless it's open,
+                     waiting up to 60s for Slack to load
 eval <js>            evaluates in the tab and prints the result as JSON (top
                      level await works)
 cdp <method> [json]  sends a CDP command to the tab and prints the result,
@@ -250,11 +251,36 @@ async function locked(fn: () => Promise<void>) {
   }
 }
 
+// a loaded client is titled "<view> - <workspace> - Slack"
+async function waitForSlack(name: string) {
+  const cdp = await tab(name)
+  const deadline = Date.now() + 60_000
+  let page = { title: '', url: '' }
+  do {
+    if (Date.now() > deadline) {
+      console.warn(
+        `[cloud] Slack hasn't loaded after 60s, the tab is at ${page.url} titled "${page.title}"`
+      )
+      break
+    }
+    await sleep(500)
+    const { result } = await cdp
+      .send('Runtime.evaluate', {
+        expression: '({ title: document.title, url: location.href })',
+        returnByValue: true,
+      })
+      .catch(() => ({ result: { value: page } }))
+    page = result.value ?? page
+  } while (!/ - .+ - Slack$/.test(page.title))
+  cdp.close()
+}
+
 async function up(name: string) {
   const cookie = process.env.SLACK_D_COOKIE
   if (!cookie) fail("Set SLACK_D_COOKIE to the test account's d cookie")
   mkdirSync(TABS, { recursive: true })
 
+  let opened = false
   await locked(async () => {
     if (!EXTENSION && !existsSync(path.join(ROOT, 'node_modules')))
       run('npm', ['ci'], { ...process.env, ELECTRON_SKIP_BINARY_DOWNLOAD: '1' })
@@ -292,6 +318,7 @@ async function up(name: string) {
         ])
       console.log(`[cloud] Starting Chromium with devtools on ${ports.cdp}`)
       writeFileSync(tabFile(name), await launchChromium(cookie, ports as Ports))
+      opened = true
     } else if (!(await tabTarget(name))) {
       const cdp = await browser()
       const { targetId } = await cdp.send('Target.createTarget', {
@@ -300,8 +327,10 @@ async function up(name: string) {
       })
       cdp.close()
       writeFileSync(tabFile(name), targetId)
+      opened = true
     }
   })
+  if (opened) await waitForSlack(name)
   console.log(`[cloud] Tab ${name} is open, logs in ${STATE}`)
 }
 
