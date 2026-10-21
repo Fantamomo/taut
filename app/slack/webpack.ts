@@ -204,7 +204,9 @@ export function patchFunctionExport(
         const patched = Object.assign(function (this: unknown, ...args: any[]) {
           return (active ? wrapped : original).apply(this, args)
         }, original)
-        // keeps byName lookups finding it
+        // keeps byName and byMeta lookups finding it
+        const name = selectorNames.get(original)
+        if (name) nameSelector(patched, name)
         return Object.defineProperty(patched, 'name', { value: original.name })
       }
     )
@@ -214,6 +216,17 @@ export function patchFunctionExport(
     moduleExportsPatchers.delete(patcher)
   }
 }
+
+// slack registers names for its debugger, hook so we can capture those names too
+patchFunctionExport(
+  byName('exposeSelectorForDebug'),
+  (original) =>
+    (name, selector, ...rest) => {
+      if (typeof name === 'string' && typeof selector === 'function')
+        nameSelector(selector, name)
+      return original(name, selector, ...rest)
+    }
+)
 
 function wrapModuleFactory(
   moduleId: PropertyKey,

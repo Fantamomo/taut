@@ -393,7 +393,7 @@ function ScheduleEditor({
               </span>
               <span className="taut-schedule__times">
                 {time(window, i, 'start', 'from')}
-                <span aria-hidden="true">–</span>
+                <span aria-hidden="true">-</span>
                 {time(window, i, 'end', 'to')}
                 <span className="taut-schedule__next-day">
                   {window.end <= window.start && (
@@ -515,7 +515,7 @@ function StatusEditor({ value, onChange, label, api }: OptEditorProps<Status>) {
           value={text}
           maxLength={STATUS_MAX}
           aria-label={label}
-          placeholder="What’s your status?"
+          placeholder="What's your status?"
           onChange={(e) => setText(e.target.value)}
           onBlur={() => save({ text: text.trim() })}
           onKeyDown={(e) => {
@@ -610,7 +610,7 @@ function ReplyEditor({ value, onChange, label, api }: OptEditorProps<Reply>) {
         if (length <= REPLY_MAX && !same(blocks, value)) onChange(blocks)
       }}
       ariaLabel={label}
-      placeholder="I’m out of office right now."
+      placeholder="I'm out of office right now."
       maxLength={REPLY_MAX}
     />
   )

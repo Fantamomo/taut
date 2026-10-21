@@ -32,7 +32,10 @@ if (!tag?.startsWith('desktop-v')) {
 const repo = process.env.GITHUB_REPOSITORY || 'jeremy46231/taut'
 const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN
 
-async function fetchOk(url: string, init?: RequestInit): Promise<Response> {
+async function fetchOk(
+  url: string | URL,
+  init?: RequestInit
+): Promise<Response> {
   const response = await fetch(url, init)
   if (!response.ok) {
     throw new Error(
@@ -106,8 +109,10 @@ const {
 if (!tokenUrl || !ACTIONS_ID_TOKEN_REQUEST_TOKEN) {
   throw new Error('[report] needs a GitHub Actions job with id-token: write')
 }
+const oidcUrl = new URL(tokenUrl)
+oidcUrl.searchParams.set('audience', TAUT_SERVER)
 const { value: oidc } = (await (
-  await fetchOk(`${tokenUrl}&audience=${encodeURIComponent(TAUT_SERVER)}`, {
+  await fetchOk(oidcUrl, {
     headers: { authorization: `Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },
   })
 ).json()) as { value: string }

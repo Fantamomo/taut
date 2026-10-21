@@ -9,6 +9,14 @@ Each release is a `## x.y.z` heading, and each change is one bullet:
 - `- **Plugin Name**: Fixed what was broken` for a plugin fix
 - `- What changed` for a change to Taut itself
 
+## 3.1.0
+
+- **Huddle Activity** (new plugin): Shows who muted you or anyone else in a huddle, and logs renames, theme and language changes, invites, knocks, and transcription
+- **Owl Mode** (new plugin): Reply and react as Owl under your own confessions, right from the reply box
+- **Thread Jump** (new plugin): Jump to the top, bottom, a date, or 100 replies at a time in long threads
+- **Show Sending Bot**: Fixed badges in Activity after Slack's October 20th update, and on grouped messages
+- Fixed the color picker in plugin settings after Slack's October 20th update
+
 ## 3.0.4
 
 - **User Pronouns**: Fixed after Slack's October 20th update

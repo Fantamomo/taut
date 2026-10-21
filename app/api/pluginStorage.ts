@@ -1,5 +1,6 @@
 import type { JsonValue, Widen } from '../../shared/Plugin'
 import type { BlobStore } from '../../shared/TautBridge'
+import type { NormalizedBridge } from '../bridgeCompat'
 import { Store } from '../store'
 
 /** a saved value as a `Store`, synced with storage and with other open Slack tabs */
@@ -18,6 +19,42 @@ export type StoredStore<T extends JsonValue> = Pick<
 }
 
 const channelName = (namespace: string) => `taut:${namespace}`
+
+/** a blob store kept as one JSON object in the bridge secret `name`, since secrets can't be listed */
+export function secretBlobStore(
+  bridge: Pick<NormalizedBridge, 'readSecret' | 'writeSecret' | 'deleteSecret'>,
+  name: string
+): BlobStore {
+  const load = async () => {
+    const raw = await bridge.readSecret(name)
+    if (!raw) return new Map<string, string>()
+    try {
+      const parsed = JSON.parse(raw)
+      return new Map<string, string>(
+        parsed && typeof parsed === 'object' ? Object.entries(parsed) : []
+      )
+    } catch {
+      return new Map<string, string>()
+    }
+  }
+  const change = async (
+    edit: (entries: Map<string, string>) => void
+  ): Promise<boolean> =>
+    await navigator.locks.request(`taut:secret:${name}`, async () => {
+      const entries = await load()
+      edit(entries)
+      return entries.size
+        ? bridge.writeSecret(name, JSON.stringify(Object.fromEntries(entries)))
+        : bridge.deleteSecret(name)
+    })
+  return {
+    list: async () => [...(await load()).keys()],
+    read: async (key) => (await load()).get(key) ?? null,
+    write: (key, value) => change((entries) => entries.set(key, value)),
+    delete: (key) => change((entries) => entries.delete(key)),
+    clear: () => change((entries) => entries.clear()),
+  }
+}
 
 /** notifies every tab's open stores that `key` (or every key, if omitted) in blob `namespace` changed */
 export function announceStorageChange(namespace: string, key?: string) {

@@ -24,15 +24,17 @@ Turn plugins on and off in `Preferences` > `Taut`, where you can also write your
 
 <!-- begin plugins (written by scripts/readme.ts) -->
 
-<details><summary>All 33 plugins</summary>
+<details><summary>All 35 plugins</summary>
 
 #### Messages
 
 - **Bring Back Slackbot**: Makes Slackbot custom responses be from Slackbot again
 - **Copy Reacted**: Copy the list of people who reacted to a message
+- **Owl Mode** (Hack Club only): Reply and react anonymously as the author of your owl confessions
 - **Show Real User**: Shows the user who sent a message via a bot like at-channel
 - **Show Sending Bot**: Shows the bot used to send a user message
 - **Shut Up Slackbot**: Marks Slackbot's "an app took over your slash command" DMs as read and silences them
+- **Thread Jump**: Jump to the top, bottom, a date, or 100 replies at a time in long threads
 - **User Pronouns**: Shows people's pronouns next to the timestamp on their messages
 - **Who Reacted**: Shows the avatars of everyone who reacted next to each reaction
 

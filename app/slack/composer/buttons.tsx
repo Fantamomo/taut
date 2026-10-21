@@ -138,6 +138,7 @@ type TextyButtonsProps = {
   draftId?: string
   viewContext?: string
   enableSubmitButton?: boolean
+  collapseToolbarControls?: boolean
   textyRef?: { current?: { element?: Element } | null }
 }
 type ToolbarContext = TextyButtonsProps & { broadcast?: ComposerBroadcast }
@@ -242,7 +243,13 @@ patchComponentPromise.then(async (patchComponent) => {
         const channel = channelId && state?.channels?.[channelId]
         return !!channel && !channel.isNonExistent
       })
-      if (!toolbar || !views || !buttons.length) return <Original {...props} />
+      if (
+        !toolbar ||
+        !views ||
+        !buttons.length ||
+        toolbar.collapseToolbarControls
+      )
+        return <Original {...props} />
 
       const context = composerContext(toolbar, views, hasChannel)
       const shown = buttons.filter((button) =>

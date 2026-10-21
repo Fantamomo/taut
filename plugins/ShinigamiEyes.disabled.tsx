@@ -210,7 +210,7 @@ export default class ShinigamiEyes extends TautPlugin<typeof ShinigamiEyes> {
                           }}
                         >
                           <MrkdwnElement
-                            text={`${prevEmoji} → ${newEmoji} on _${date}_ by ${changedBy}${
+                            text={`${prevEmoji} -> ${newEmoji} on _${date}_ by ${changedBy}${
                               reason ? `: ${reason}` : ''
                             }`}
                           />

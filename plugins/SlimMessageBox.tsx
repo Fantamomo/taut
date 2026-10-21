@@ -38,8 +38,8 @@ const BUTTON_PROPS: Record<string, string[]> = {
   showSlashButton: ['enableSlashCommandsButton', 'enableShortcutsButton'],
 }
 
-// attachments get slack's stacked layout back, since they need the full width
-const ONE_LINE = `${SCOPE}:not(:has(.c-wysiwyg_container__attachments, .p-message_input__attachments, .c-pending_files, .c-message__editor__composer_attachments))`
+// slack's layout stays for attachments, which need the full width
+const ONE_LINE = `${SCOPE}:not(.c-wysiwyg_container--with_input_overlay):not(:has(.c-wysiwyg_container__attachments, .p-message_input__attachments, .c-pending_files, .c-message__editor__composer_attachments))`
 
 const BROADCAST = '.p-threads_footer__input_container__broadcast_controls'
 

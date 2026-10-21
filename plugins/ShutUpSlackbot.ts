@@ -113,16 +113,18 @@ export default class ShutUpSlackbot extends TautPlugin<typeof ShutUpSlackbot> {
   /** notices that arrived while Slack was closed */
   private async catchUp() {
     let seen: unknown
-    const dms = await this.api.redux
-      .waitForState(
-        () => {
-          const state = this.api.redux.getRawState()
-          // every dispatch checks, so only look through the channels when they change
-          if (!state?.unreadChannelCounts || state.channels === seen) return
-          seen = state.channels
-          return this.slackbotDms()
-        },
-        AbortSignal.any([this.api.signal, AbortSignal.timeout(60_000)])
+    const dms = await this.api
+      .within(
+        (signal) =>
+          this.api.redux.waitForState(() => {
+            const state = this.api.redux.getRawState()
+            // every dispatch checks, so only look through the channels when they change
+            if (!state?.unreadChannelCounts || state.channels === seen) return
+            seen = state.channels
+            return this.slackbotDms()
+          }, signal),
+        60_000,
+        "Slack's unread state"
       )
       .catch(() => undefined)
     for (const [channel, cursor] of dms ?? []) {

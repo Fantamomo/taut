@@ -2,7 +2,7 @@
 
 import { onChildWindow } from '../childWindows'
 import { waitForRenderedComponent } from '../react'
-import { byName, waitForExport } from '../webpack'
+import { byName, getExport } from '../webpack'
 
 /** where a link is coming into the composer from */
 export interface LinkTransformContext {
@@ -59,11 +59,18 @@ type DetectLinks = (options: {
   ignorePhoneMatches?: boolean
 }) => { offset: number; text: string; url: string }[]
 
-// the detector Slack linkifies composer text with
 let detectLinks: DetectLinks | undefined
-waitForExport<DetectLinks>(byName('detectLinks')).then((detect) => {
-  detectLinks = detect
-})
+let detectLinksMissing = false
+/** the detector Slack linkifies composer text with, has to be sync because a paste cannot wait */
+function linkDetector(): DetectLinks | undefined {
+  if (detectLinks || detectLinksMissing) return detectLinks
+  detectLinks = getExport<DetectLinks>(byName('detectLinks'))
+  if (!detectLinks) {
+    detectLinksMissing = true
+    console.error("[Taut] Slack's detectLinks is unavailable")
+  }
+  return detectLinks
+}
 
 type Attributes = Record<string, unknown>
 type Op = { insert?: unknown; attributes?: Attributes }
@@ -110,8 +117,9 @@ function transformOps(ops: Op[]): Op[] | null {
         attributes: { ...op.attributes, link: next },
       }
     }
-    if (op.attributes?.unlink || !detectLinks) return op
-    const matches = detectLinks({
+    const detect = op.attributes?.unlink ? undefined : linkDetector()
+    if (!detect) return op
+    const matches = detect({
       input: op.insert,
       ignoreEmailMatches: true,
       ignorePhoneMatches: true,

@@ -1,5 +1,6 @@
 // every way of sending, in both composer modes, passes through one of the patches below
 
+import { within } from '../helpers'
 import type { Block, RichTextElement } from './blocks'
 import { mapRichTextElements } from './blocks'
 import { patchThunk, waitForThunkCreator } from './redux'
@@ -79,6 +80,7 @@ function remapUnfurls(
 }
 
 const FORMAT_TIMEOUT_MS = 5000
+const blocksFormatFetcher = waitForThunkCreator('blocksFormatFetcher')
 
 type Dispatch = (action: unknown) => any
 
@@ -88,10 +90,11 @@ async function markdownToBlocks(
   markdown: string
 ): Promise<Block[] | undefined> {
   // bounded, since a send waits on this
-  const format = await Promise.race([
-    waitForThunkCreator('blocksFormatFetcher'),
-    new Promise<undefined>((resolve) => setTimeout(resolve, FORMAT_TIMEOUT_MS)),
-  ])
+  const format = await within(
+    blocksFormatFetcher,
+    FORMAT_TIMEOUT_MS,
+    "Slack's blocks.format action"
+  )
   if (!format) return undefined
   try {
     const res = await dispatch(

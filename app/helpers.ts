@@ -20,6 +20,45 @@ export function deepEqual(a: unknown, b: unknown): boolean {
 export const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms))
 
+const reported = new Set<string>()
+/** resolves undefined if `work` hasn't settled within `ms`, logging once that `what` is unavailable */
+export function within<T>(
+  /** a promise, or a function returning a promise that can be stopped with the signal */
+  work: Promise<T> | ((signal: AbortSignal) => Promise<T>),
+  ms: number,
+  what?: string,
+  /** also aborts the work's signal */
+  signal?: AbortSignal
+): Promise<T | undefined> {
+  const deadline = new AbortController()
+  const promise =
+    typeof work === 'function'
+      ? work(
+          signal ? AbortSignal.any([deadline.signal, signal]) : deadline.signal
+        )
+      : work
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      if (what && !reported.has(what)) {
+        reported.add(what)
+        console.error(`[Taut] ${what} is unavailable`)
+      }
+      deadline.abort()
+      resolve(undefined)
+    }, ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      }
+    )
+  })
+}
+
 /** runs `attempt` up to `tries` times until it returns a value, with exponential backoff and full jitter */
 export async function retry<T>(
   attempt: () => Promise<T | undefined>,

@@ -1,6 +1,6 @@
 {
   "name": "taut",
-  "version": "3.0.4",
+  "version": "3.1.0",
   "description": "Client mod for Slack",
   "license": "GPL-3.0-or-later",
   "private": true,
@@ -26,6 +26,7 @@
     "build:user-plugin": "node scripts/userPlugin.ts",
     "dev": "node scripts/dev.ts",
     "desktop:dev": "node scripts/desktop.ts",
+    "cloud": "node scripts/cloud.ts",
     "repo": "node scripts/repo.ts",
     "format": "biome format --write . && prettier --write \"**/*.md\"",
     "lint": "biome lint .",

@@ -67,6 +67,8 @@ type PendingSend = {
 const SLASH_COMMAND_RE = /^[/／][^/／\s]/
 /** how long after the command at-channel may take to ping, real-world is like half a second */
 const PING_TIMEOUT = 10_000
+/** how long to wait for Slack's pieces where they're used */
+const ACTION_WAIT_MS = 10_000
 
 export default class NativeAtChannel extends TautPlugin<
   typeof NativeAtChannel
@@ -87,16 +89,31 @@ export default class NativeAtChannel extends TautPlugin<
     ttl: 30 * 24 * 60 * 60 * 1000,
     maxSize: 5000,
   })
-  private keywordsFor?: KeywordsFor
+  private keywordsFor = this.api.waitForExport<KeywordsFor>(
+    this.api.byName('getBroadcastKeywordsForUser')
+  )
   /** drafts the composer set aside to send, which a relayed send must delete */
   private sending = new Map<string, Draft>()
   /** channel -> the send at-channel hasn't answered yet */
   private pendingSends = new Map<string, PendingSend>()
-  private setLocalDraft?: Action
-  private getInputProxy?: (where: Where) => Input | undefined
-  private isInputRegistered?: (where: Where) => boolean
+  private setLocalDraft = this.api.waitForExport<Action>(
+    this.api.byMeta('setLocalDraft')
+  )
+  private getInputProxy = this.api.waitForExport<
+    (where: Where) => Input | undefined
+  >(this.api.byName('getInputProxy'))
+  private isInputRegistered = this.api.waitForExport<(where: Where) => boolean>(
+    this.api.byName('isInputRegistered')
+  )
   /** client_token -> waiting for the modal a shortcut run with it opens */
   private views = new Map<string, (viewId: string) => void>()
+  /** the timestamp in the last client_token */
+  private lastToken = 0
+  /** Slack's thunk creators for running a shortcut and submitting its modal */
+  private readonly thunks = {
+    executeAppAction: this.api.redux.waitForThunkCreator('executeAppAction'),
+    submitView: this.api.redux.waitForThunkCreator('submitView'),
+  }
 
   async start() {
     await this.senders.load()
@@ -135,34 +152,6 @@ export default class NativeAtChannel extends TautPlugin<
           this.giveUp(channel, pending)
       }
     })
-    this.api
-      .waitForExport<Action>(this.api.byMeta('setLocalDraft'))
-      .then((fn) => {
-        this.setLocalDraft = fn
-      })
-    this.api
-      .waitForExport<(where: Where) => Input | undefined>(
-        this.api.byName('getInputProxy')
-      )
-      .then((fn) => {
-        this.getInputProxy = fn
-      })
-    this.api
-      .waitForExport<(where: Where) => boolean>(
-        this.api.byName('isInputRegistered')
-      )
-      .then((fn) => {
-        this.isInputRegistered = fn
-      })
-
-    this.api
-      .waitForExport<KeywordsFor>(
-        this.api.byName('getBroadcastKeywordsForUser')
-      )
-      .then((fn) => {
-        this.keywordsFor = fn
-      })
-
     // Slack leaves @channel and @here out of the @ menu when you can't use them
     this.api.redux.patchThunk(
       'autocompleteMembers',
@@ -182,10 +171,15 @@ export default class NativeAtChannel extends TautPlugin<
             if (await this.relayableNow(channelId, type))
               relayable.add(`BK${type}`)
           if (!relayable.size) return dispatch(original(args, ...rest))
+          const keywordsFor = await this.api.within(
+            this.keywordsFor,
+            ACTION_WAIT_MS,
+            "Slack's broadcast keywords"
+          )
           const state = this.api.redux.getRawState()
           const offered = new Set([
             ...relayable,
-            ...(this.keywordsFor?.(state, channelId) ?? []).map((k) => k.id),
+            ...(keywordsFor?.(state, channelId) ?? []).map((k) => k.id),
           ])
           // the full list brings @everyone too, so keep only what Slack or at-channel can send
           const only = (results: unknown): unknown => {
@@ -316,17 +310,41 @@ export default class NativeAtChannel extends TautPlugin<
     if (this.pendingSends.get(channelId) !== pending || this.api.signal.aborted)
       return
     this.pendingSends.delete(channelId)
-    const restored = this.restore(channelId, pending)
-    this.log('at-channel did not send in', channelId, { restored })
+    this.restore(channelId, pending).then((restored) =>
+      this.log('at-channel did not send in', channelId, { restored })
+    )
   }
 
   /** put the send back in the composer, only if it's empty */
-  private restore(channelId: string, pending: PendingSend): boolean {
+  private async restore(
+    channelId: string,
+    pending: PendingSend
+  ): Promise<boolean> {
+    const [setLocalDraft, getInputProxy, isInputRegistered] = await Promise.all(
+      [
+        this.api.within(
+          this.setLocalDraft,
+          ACTION_WAIT_MS,
+          "Slack's setLocalDraft"
+        ),
+        this.api.within(
+          this.getInputProxy,
+          ACTION_WAIT_MS,
+          "Slack's getInputProxy"
+        ),
+        this.api.within(
+          this.isInputRegistered,
+          ACTION_WAIT_MS,
+          "Slack's isInputRegistered"
+        ),
+      ]
+    )
     const store = this.api.redux.getStore()
-    if (!store || !this.setLocalDraft || !this.getInputProxy) return false
+    if (!store || !setLocalDraft || !getInputProxy || !isInputRegistered)
+      return false
     const { viewContext } = pending
     const { ops } = pending.delta
-    const input = this.getInputProxy({ viewContext, channelId })
+    const input = getInputProxy({ viewContext, channelId })
     if (input) {
       if (!input.isEmpty()) return false
       input.setContents({ contents: ops })
@@ -337,11 +355,10 @@ export default class NativeAtChannel extends TautPlugin<
       const typed = current?.ops?.some(
         (op) => typeof op.insert !== 'string' || op.insert.trim()
       )
-      if (typed || !pending.draft || this.isInputRegistered?.({ channelId }))
+      if (typed || !pending.draft || isInputRegistered({ channelId }))
         return false
     }
-    if (pending.draft)
-      store.dispatch(this.setLocalDraft({ ...pending.draft, ops }))
+    if (pending.draft) store.dispatch(setLocalDraft({ ...pending.draft, ops }))
     return true
   }
 
@@ -393,13 +410,13 @@ export default class NativeAtChannel extends TautPlugin<
   /** whether Slack would refuse this broadcast but at-channel could send it, undefined until membership is known */
   private relayable(
     channelId: string,
-    type: 'channel' | 'here'
+    type: 'channel' | 'here',
+    keywordsFor: KeywordsFor
   ): boolean | undefined {
-    if (!this.keywordsFor) return false
     const state = this.api.redux.getRawState()
     if (!state?.slashCommand?.commands?.[`${AT_CHANNEL_APP}-/${type}`])
       return false
-    if (this.keywordsFor(state, channelId).some((k) => k.id === `BK${type}`))
+    if (keywordsFor(state, channelId).some((k) => k.id === `BK${type}`))
       return false
 
     const channel: Channel | undefined = state.channels?.[channelId]
@@ -417,10 +434,16 @@ export default class NativeAtChannel extends TautPlugin<
     channelId: string,
     type: 'channel' | 'here'
   ): Promise<boolean> {
-    const known = this.relayable(channelId, type)
+    const keywordsFor = await this.api.within(
+      this.keywordsFor,
+      ACTION_WAIT_MS,
+      "Slack's broadcast keywords"
+    )
+    if (!keywordsFor) return false
+    const known = this.relayable(channelId, type, keywordsFor)
     if (known !== undefined) return known
     await this.fetchMembership(channelId)
-    return !!this.relayable(channelId, type)
+    return !!this.relayable(channelId, type, keywordsFor)
   }
 
   /** Slack's membership lookup, which remembers the answer in the store, given up on after 5s */
@@ -431,10 +454,7 @@ export default class NativeAtChannel extends TautPlugin<
         userIds: [AT_CHANNEL_USER],
       })
       .catch((err) => this.log('membership lookup failed', err))
-    return Promise.race([
-      lookup,
-      new Promise<void>((resolve) => setTimeout(resolve, 5_000)),
-    ])
+    return this.api.within(lookup, 5_000)
   }
 
   /** whether at-channel posted this for you */
@@ -465,20 +485,40 @@ export default class NativeAtChannel extends TautPlugin<
     return found
   }
 
+  /** a client_token unique in this tab, in slack's format (it parses the timestamp) */
+  private newClientToken(): string {
+    this.lastToken = Math.max(Date.now(), this.lastToken + 1)
+    return `web-${this.lastToken}`
+  }
+
+  /** dispatches one of `thunks`, failing if Slack doesn't have it in time */
+  private async dispatch(name: keyof NativeAtChannel['thunks'], args: object) {
+    const create = await this.api.within(
+      this.thunks[name],
+      10_000,
+      `Slack's ${name} action`
+    )
+    // a user action, so the store exists by now
+    const store = this.api.redux.getStore()
+    if (!create || !store)
+      throw new Error(`Slack's ${name} action isn't available`)
+    return store.dispatch(create(args))
+  }
+
   /** run one of at-channel's message shortcuts on a message, as you */
   private runShortcut(
     actionId: string,
     channelId: string,
     messageTs: string,
-    clientToken = `web-${Date.now()}`
+    clientToken?: string
   ) {
     this.log('running at-channel shortcut', actionId, 'on', messageTs)
-    return this.api.redux.dispatchThunk('executeAppAction', {
+    return this.dispatch('executeAppAction', {
       appId: AT_CHANNEL_APP,
       actionId,
       channelId,
       messageTs,
-      clientToken,
+      clientToken: clientToken ?? this.newClientToken(),
     })
   }
 
@@ -486,9 +526,10 @@ export default class NativeAtChannel extends TautPlugin<
   private async editPing(channelId: string, ts: string, blocks: Block[]) {
     const richText = blocks.find((block) => block.type === 'rich_text')
     if (!richText) throw new Error('Nothing to edit the ping to')
-    const clientToken = `web-${Date.now()}`
+    const clientToken = this.newClientToken()
+    let timer: ReturnType<typeof setTimeout> | undefined
     const opened = new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         this.views.delete(clientToken)
         reject(new Error('at-channel did not open its edit modal'))
       }, 10_000)
@@ -498,10 +539,16 @@ export default class NativeAtChannel extends TautPlugin<
         resolve(viewId)
       })
     })
-    // at-channel's "Edit this message" shortcut
-    await this.runShortcut('8573908295398', channelId, ts, clientToken)
+    try {
+      // at-channel's "Edit this message" shortcut
+      await this.runShortcut('8573908295398', channelId, ts, clientToken)
+    } catch (err) {
+      clearTimeout(timer)
+      this.views.delete(clientToken)
+      throw err
+    }
     const viewId = await opened
-    await this.api.redux.dispatchThunk('submitView', {
+    await this.dispatch('submitView', {
       viewId,
       viewState: {
         values: {

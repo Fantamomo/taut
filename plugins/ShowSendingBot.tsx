@@ -30,11 +30,16 @@ const drawsSender = (className = '') =>
 const badgeSize = (avatar = 36) => (avatar >= 32 ? 20 : 14)
 
 /** whether a gutter slot holds the timestamp a grouped message draws */
-const isCompactGutter = (slot: React.ReactNode) =>
-  React.isValidElement<{ className?: string }>(slot) &&
-  (slot.props.className ?? '').includes(
-    'p-message_pane_message__compact_timestamp'
+const isCompactGutter = (slot: React.ReactNode) => {
+  if (!React.isValidElement<{ className?: string }>(slot)) return false
+  // the thread gutter is a memo, so its name is on the inner component
+  const type = slot.type as { type?: { displayName?: string } }
+  return (
+    (slot.props.className ?? '').includes(
+      'p-message_pane_message__compact_timestamp'
+    ) || type.type?.displayName === 'ThreadCompactGutterGeneric'
   )
+}
 
 type ContextBlock = {
   type?: string
@@ -323,6 +328,11 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
           translate: 0 -50%;
         }
 
+        /* the thread pane has less room on the left than a channel */
+        .p-thread_compact_gutter_generic + .taut-sending-bot__badge--gutter {
+          right: calc(100% - 8px);
+        }
+
         .taut-sending-bot__badge--inline,
         .c-message_kit__background--hovered .taut-sending-bot__badge--inline {
           position: static;
@@ -344,10 +354,7 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
     )
 
     // get copies of the message into the context
-    this.provideMessage(
-      'ProgressiveDisclosureSuccessCoachmarkWrapper',
-      (props) => props.msg
-    )
+    this.provideMessage('MessageBackground', (props) => props.msg)
     this.provideMessage('MessageAvatar', (props) => props.msg)
     this.provideMessage('SearchResult', (props) => props)
     this.provideMessage('MessageAttachment', (props) => {

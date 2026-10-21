@@ -15,10 +15,12 @@ A plugin is one file in `plugins/` whose default export is a class extending `Ta
 ## Lifecycle
 
 - `start()` runs when the plugin is enabled. Only await fast, local setup. Run network work in the background and stop it with `this.api.signal`.
+- Start waiting on Slack's pieces in `start()`, and bound the await where you use it with `this.api.within(promise, ms, what)`. It gives `undefined` and logs once that `what` is unavailable. For a wait started just for that call, like a `waitForState`, pass `(signal) => promise` instead, so the wait itself stops when the time runs out. Await at the use rather than at the start, because some of Slack's code, like huddles, only loads once it's needed.
 - Everything registered through `this.api` is undone when the plugin stops. `stop()` is only for things you set up some other way.
 - A config change restarts the plugin as a fresh instance.
 - An option's `editor` renders in settings whether or not the plugin is running, so the `api` it gets is unscoped: anything it registers, like CSS, it has to dispose itself, from an effect's cleanup.
 - Each open Slack tab runs its own instance, and all of them share the plugin's storage. Keep saved state in `this.api.storage.store(key, defaultValue)`, which stays in step with what's saved and with every other tab, instead of holding your own copy. Its `update` applies your change to the latest saved value under a lock, so tabs don't undo each other's changes.
+- Secrets your plugin saves itself, like a key it's given while running, go in `this.api.secrets`, which works like `this.api.storage` but is kept in secret storage.
 
 Before calling it done, check:
 
