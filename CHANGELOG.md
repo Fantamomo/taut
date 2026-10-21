@@ -9,6 +9,10 @@ Each release is a `## x.y.z` heading, and each change is one bullet:
 - `- **Plugin Name**: Fixed what was broken` for a plugin fix
 - `- What changed` for a change to Taut itself
 
+## 3.1.4
+
+- **Haiku Warning**: Choose a banner, a pop-up, or both, the icon is the Orpheus emoji, and the banner no longer flashes while typing
+
 ## 3.1.2
 
 - **Nicknames**: Set a nickname from the right-click menu on someone's name or avatar
