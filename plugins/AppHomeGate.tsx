@@ -55,33 +55,32 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
 
     // Banner in every tab of an app, between the tab bar and the content
     this.api.patchComponent<{
-      channelId?: string,
-      currentTabId?: string,
+      channelId?: string
+      currentTabId?: string
       tabs?: {
         autoClogProps?: {
-          appId?: string,
-          channelId?: string,
-        },
-        id?: string,
+          appId?: string
+          channelId?: string
+        }
+        id?: string
       }[]
-    }>(
-      'StyledChannelTabBar',
-      (Original) => (props) => {
-        const channelId = props.channelId
-        if (!channelId || !channelId.startsWith('D')) return <Original {...props} />
-        const tabs = props.tabs
-        if (!tabs) return <Original {...props} />
-        const appId = tabs.find((tab) => tab.autoClogProps?.appId)?.autoClogProps?.appId
-        if (!appId || !appId.startsWith('A')) return <Original {...props} />
+    }>('StyledChannelTabBar', (Original) => (props) => {
+      const channelId = props.channelId
+      if (!channelId || !channelId.startsWith('D'))
+        return <Original {...props} />
+      const tabs = props.tabs
+      if (!tabs) return <Original {...props} />
+      const appId = tabs.find((tab) => tab.autoClogProps?.appId)?.autoClogProps
+        ?.appId
+      if (!appId || !appId.startsWith('A')) return <Original {...props} />
 
-        return (
-          <>
-            <Original {...props} />
-            <this.AppHomeBanner key="taut-app-home-gate" id={channelId} />
-          </>
-        )
-      }
-    )
+      return (
+        <>
+          <Original {...props} />
+          <this.AppHomeBanner key="taut-app-home-gate" id={channelId} />
+        </>
+      )
+    })
 
     this.injectStyles()
     this.log('Started')
@@ -134,7 +133,6 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
         return originalSend.call(this, body)
       }
 
-
       const params = plugin.extractParams(body)
       const id = params.id
       if (typeof id !== 'string' || !id) {
@@ -150,7 +148,10 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
       // if we don't let slack thing the request succeeded, it will stop trying after some fails,
       // so me mock a success, but in reality nothing happens
       const query = new URL(info.url.href)
-      query.searchParams.set('_x_version_ts', Math.floor(Date.now() / 1000).toString())
+      query.searchParams.set(
+        '_x_version_ts',
+        Math.floor(Date.now() / 1000).toString()
+      )
       const method = `${query.pathname.replace(/^\/api\//, '')}${query.search}`
 
       plugin.log('Paused app open event for', id)
@@ -164,10 +165,10 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
     const params: Record<string, string | Blob> = {}
     if (body instanceof FormData) {
       body.forEach((value, key) => {
-        if (key !== "token") {
-          params[key] = value;
+        if (key !== 'token') {
+          params[key] = value
         }
-      });
+      })
     } else if (body instanceof URLSearchParams) {
       for (const [name, value] of body.entries()) {
         if (name !== 'token') params[name] = value
@@ -202,7 +203,8 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
     this.emit()
     const params = { ...request.params }
     // now we sent the real request
-    this.api.userAPI(request.method, params)
+    this.api
+      .userAPI(request.method, params)
       .catch((err) => this.log('Could not send request', err))
   }
 
@@ -229,11 +231,12 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
   }
 
   private approveAlways(id: string) {
-    this.alwaysAllowStore.update((ids) => {
-      const next = [...ids]
-      next.push(id)
-      return next
-    })
+    this.alwaysAllowStore
+      .update((ids) => {
+        const next = [...ids]
+        next.push(id)
+        return next
+      })
       .catch((err) => this.log('Could not save', err))
     this.release(id)
   }
@@ -250,7 +253,9 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
   }
 
   private usePending(id: string): PendingRequest | undefined {
-    return React.useSyncExternalStore(this.subscribe, () => this.pending.get(id))
+    return React.useSyncExternalStore(this.subscribe, () =>
+      this.pending.get(id)
+    )
   }
 
   private AppHomeBanner = (props: { id: string }) => {
@@ -343,7 +348,12 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
               aria-label="More approval options"
               onClick={() => setMenuOpen((open) => !open)}
             >
-              <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+              <svg
+                viewBox="0 0 12 12"
+                width="12"
+                height="12"
+                aria-hidden="true"
+              >
                 <path
                   d="m2.5 4.5 3.5 3.5 3.5-3.5"
                   fill="none"
