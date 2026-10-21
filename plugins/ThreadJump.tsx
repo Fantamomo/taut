@@ -20,7 +20,7 @@ export default class ThreadJump extends TautPlugin<typeof ThreadJump> {
   static readonly authors = ['jeremy'] as const
   static readonly category = 'messages'
   static readonly defaultConfig = {
-    enabled: false,
+    enabled: true,
     step: opt.number(100, 'Replies to move each step', { min: 1, max: 1000 }),
     banners: opt(
       true,

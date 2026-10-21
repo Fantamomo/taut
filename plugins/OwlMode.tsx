@@ -52,7 +52,7 @@ export default class OwlMode extends TautPlugin<typeof OwlMode> {
   static readonly category = 'messages'
   static readonly hackClubOnly = true
   static readonly defaultConfig = {
-    enabled: false,
+    enabled: true,
     autoSave: opt(
       false,
       'Save confession keys in Taut whenever owl shows them, without asking'

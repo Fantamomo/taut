@@ -65,7 +65,7 @@ export default class HuddleActivity extends TautPlugin<typeof HuddleActivity> {
   static readonly authors = ['izie', 'jeremy'] as const
   static readonly category = 'people'
   static readonly defaultConfig = {
-    enabled: false,
+    enabled: true,
     toasts: opt.select(
       [
         { value: 'all', label: 'Everything' },
