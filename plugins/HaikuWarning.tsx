@@ -141,8 +141,9 @@ export default class HaikuWarning extends TautPlugin<typeof HaikuWarning> {
       (state): boolean | undefined => {
         if (!channelId) return false
         const channel = state?.channels?.[channelId]
+        if (!channel?.is_channel || channel.is_mpim) return false
         // she joins public channels to reply, and can't join private ones
-        if (channel?.is_channel && !channel.is_private) return true
+        if (!channel.is_private) return true
         const known = state?.membership?.[channelId]?.[ORPHEUS_USER]
         return known?.isKnown ? !!known.isMember : undefined
       }

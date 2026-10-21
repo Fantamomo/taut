@@ -24,7 +24,7 @@ Turn plugins on and off in `Preferences` > `Taut`, where you can also write your
 
 <!-- begin plugins (written by scripts/readme.ts) -->
 
-<details><summary>All 35 plugins</summary>
+<details><summary>All 36 plugins</summary>
 
 #### Messages
 
@@ -54,6 +54,7 @@ Turn plugins on and off in `Preferences` > `Taut`, where you can also write your
 
 - **Admin Backend** (Hack Club only): Adds buttons to open a member in Hack Club tools
 - **Custom Name Recording**: Uploads an audio file as your name recording, instead of recording one
+- **Huddle Activity**: Logs who did what in a huddle, including mutes and settings changes
 - **Human Count**: Leaves apps, and optionally guests, out of the channel header's member count
 - **IDV Status** (Hack Club only): Shows a red squiggle on users who are not IDV eligible, and orange when verified ID but >18
 - **Last Seen**: Shows when someone was last seen on their profile
