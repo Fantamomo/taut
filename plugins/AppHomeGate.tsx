@@ -10,8 +10,8 @@ const ALLOW_DURATION = 60 * 60 * 1000 // 1 hour
 const XHR_INFO = Symbol('taut.appHomeGate.xhrInfo')
 
 type PendingRequest = {
-  xhr: XMLHttpRequest
-  body: Document | XMLHttpRequestBodyInit | null | undefined
+  method: string
+  params: Record<string, string | Blob>
   /** increases with every intercepted request, so the UI can tell them apart */
   seq: number
 }
@@ -74,8 +74,6 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
         const appId = tabs.find((tab) => tab.autoClogProps?.appId)?.autoClogProps?.appId
         if (!appId || !appId.startsWith('A')) return <Original {...props} />
 
-        //this.log('AppHomeGate', props)
-
         return (
           <>
             <Original {...props} />
@@ -136,10 +134,10 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
         return originalSend.call(this, body)
       }
 
-      //plugin.log('Intercepted request', body)
 
-      const id = plugin.extractId(body)
-      if (!id) {
+      const params = plugin.extractParams(body)
+      const id = params.id
+      if (typeof id !== 'string' || !id) {
         plugin.log('No id in request, letting it through', info.url.href)
         return originalSend.call(this, body)
       }
@@ -148,32 +146,64 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
         return originalSend.call(this, body)
       }
 
-      // every intercepted request (also a later one, after the user already
-      // dismissed the banner or ignored it) replaces the previous entry and notifies the UI,
-      // so the banner shows up again right away. Deliberately no send().
+      // this is fascinating,
+      // if we don't let slack thing the request succeeded, it will stop trying after some fails,
+      // so me mock a success, but in reality nothing happens
+      const query = new URL(info.url.href)
+      query.searchParams.set('_x_version_ts', Math.floor(Date.now() / 1000).toString())
+      const method = `${query.pathname.replace(/^\/api\//, '')}${query.search}`
+
       plugin.log('Paused app open event for', id)
-      plugin.pending.set(id, { xhr: this, body, seq: ++plugin.seq })
+      plugin.pending.set(id, { method, params, seq: ++plugin.seq })
+      plugin.mockSuccess(this, info.url.href)
       plugin.emit()
     } as typeof XMLHttpRequest.prototype.send
   }
 
-  private extractId(body: unknown): string | undefined {
-    let params: URLSearchParams | FormData | undefined
-    if (typeof body === 'string') params = new URLSearchParams(body)
-    else if (body instanceof URLSearchParams) params = body
-    else if (body instanceof FormData) params = body
-    if (!params) return undefined
+  private extractParams(body: unknown): Record<string, string | Blob> {
+    const params: Record<string, string | Blob> = {}
+    if (body instanceof FormData) {
+      body.forEach((value, key) => {
+        if (key !== "token") {
+          params[key] = value;
+        }
+      });
+    } else if (body instanceof URLSearchParams) {
+      for (const [name, value] of body.entries()) {
+        if (name !== 'token') params[name] = value
+      }
+    } else if (typeof body === 'string') {
+      for (const [name, value] of new URLSearchParams(body).entries()) {
+        if (name !== 'token') params[name] = value
+      }
+    }
+    return params
+  }
 
-    const id = params.get('id')
-    return typeof id === 'string' && id ? id : undefined
+  private mockSuccess(xhr: XMLHttpRequest, url: string) {
+    const responseText = JSON.stringify({ ok: true })
+    Object.defineProperties(xhr, {
+      readyState: { configurable: true, get: () => XMLHttpRequest.DONE },
+      status: { configurable: true, get: () => 200 },
+      statusText: { configurable: true, get: () => 'OK' },
+      responseText: { configurable: true, get: () => responseText },
+      response: { configurable: true, get: () => responseText },
+      responseURL: { configurable: true, get: () => url },
+    })
+    xhr.dispatchEvent(new Event('readystatechange'))
+    xhr.dispatchEvent(new Event('load'))
+    xhr.dispatchEvent(new Event('loadend'))
   }
 
   private release(id: string) {
     const request = this.pending.get(id)
-    if (!request || !this.originalSend) return
+    if (!request) return
     this.pending.delete(id)
     this.emit()
-    this.originalSend.call(request.xhr, request.body)
+    const params = { ...request.params }
+    // now we sent the real request
+    this.api.userAPI(request.method, params)
+      .catch((err) => this.log('Could not send request', err))
   }
 
   private dismiss(id: string) {
@@ -224,7 +254,6 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
   }
 
   private AppHomeBanner = (props: { id: string }) => {
-    //this.log('AppHomeBanner', props.id)
     const request = this.usePending(props.id)
     if (!request) return null
     return <this.BannerContent key={request.seq} id={props.id} />
