@@ -1,9 +1,9 @@
 import { TautPlugin } from '$taut'
 import {
   getActiveTeam,
-  readLocalConfig,
   type LocalConfig,
   type LocalConfigTeam,
+  readLocalConfig,
 } from '../app/slack/localConfig.ts'
 
 const INSTALLS_TTL = 30 * 60 * 1000 // 30 minutes
@@ -75,7 +75,9 @@ type FilterButtonProps = {
   onClick: () => void
 }
 
-export default class UserMemberships extends TautPlugin<typeof UserMemberships> {
+export default class UserMemberships extends TautPlugin<
+  typeof UserMemberships
+> {
   static readonly id = 'UserMemberships'
   static readonly pluginName = 'User Memberships'
   static readonly description =
@@ -88,12 +90,13 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
     enabled: false,
   }
 
-  private membershipsCache = new this.api.Cache<
-    Conversation[] | null
-  >('user_memberships', {
-    ttl: INSTALLS_TTL,
-    maxSize: 2000,
-  })
+  private membershipsCache = new this.api.Cache<Conversation[] | null>(
+    'user_memberships',
+    {
+      ttl: INSTALLS_TTL,
+      maxSize: 2000,
+    }
+  )
 
   private sessionChoice: {
     account?: string
@@ -123,8 +126,7 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
         const userId = children.props.profileId
 
         if (
-          children.props.uiComponentName !==
-            'rimeto_member_profile_flexpane' ||
+          children.props.uiComponentName !== 'rimeto_member_profile_flexpane' ||
           !userId ||
           !/^[UW][A-Z0-9]+$/.test(userId)
         ) {
@@ -156,11 +158,7 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
         return (
           <Original
             {...props}
-            children={React.cloneElement(
-              children,
-              undefined,
-              ...sections
-            )}
+            children={React.cloneElement(children, undefined, ...sections)}
           />
         )
       }
@@ -173,9 +171,7 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
   private looksLikePermissionError(message: string): boolean {
     const lower = message.toLowerCase()
 
-    return PERMISSION_ERROR_HINTS.some((hint) =>
-      lower.includes(hint)
-    )
+    return PERMISSION_ERROR_HINTS.some((hint) => lower.includes(hint))
   }
 
   private appSessions(
@@ -204,8 +200,7 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
     tokenOverride: string,
     onUpdate?: (conversations: Conversation[]) => void
   ): Promise<
-    | { ok: true; conversations: Conversation[] }
-    | { ok: false; error: string }
+    { ok: true; conversations: Conversation[] } | { ok: false; error: string }
   > {
     try {
       const conversations: Conversation[] = []
@@ -221,28 +216,26 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
           }
         }
 
-        const res =
-          await this.api.userAPI<ConversationsResponse>(
-            'users.conversations',
-            {
-              user: userId,
-              // we're requesting all types of conversations, slack only returns the conversations that the user is a member of
-              types: 'public_channel,private_channel,mpim,im',
-              // 999 is the max limit for this api, and we need it (because some users have a lot of conversations (so around 10.877))
-              limit: '999',
-              ...(nextCursor ? { cursor: nextCursor } : {}),
-              token: tokenOverride,
-            },
-            {
-              signal: this.api.signal,
-            }
-          )
+        const res = await this.api.userAPI<ConversationsResponse>(
+          'users.conversations',
+          {
+            user: userId,
+            // we're requesting all types of conversations, slack only returns the conversations that the user is a member of
+            types: 'public_channel,private_channel,mpim,im',
+            // 999 is the max limit for this api, and we need it (because some users have a lot of conversations (so around 10.877))
+            limit: '999',
+            ...(nextCursor ? { cursor: nextCursor } : {}),
+            token: tokenOverride,
+          },
+          {
+            signal: this.api.signal,
+          }
+        )
 
         if (!res.ok) {
           return {
             ok: false,
-            error:
-              res.error || 'users.conversations failed',
+            error: res.error || 'users.conversations failed',
           }
         }
 
@@ -278,10 +271,7 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
     } catch (err) {
       return {
         ok: false,
-        error:
-          err instanceof Error
-            ? err.message
-            : String(err),
+        error: err instanceof Error ? err.message : String(err),
       }
     }
   }
@@ -290,87 +280,71 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
     userId: string,
     onUpdate?: (conversations: Conversation[]) => void
   ): Promise<Conversation[] | null> {
-    return this.membershipsCache.fetch(
-      userId,
-      async () => {
-        const config = readLocalConfig()
-        const active = getActiveTeam(config)
+    return this.membershipsCache.fetch(userId, async () => {
+      const config = readLocalConfig()
+      const active = getActiveTeam(config)
 
-        const account =
-          active?.id && active.user_id
-            ? `${active.id}:${active.user_id}`
-            : undefined
+      const account =
+        active?.id && active.user_id
+          ? `${active.id}:${active.user_id}`
+          : undefined
 
-        if (account !== this.sessionChoice.account) {
-          this.sessionChoice = { account }
-        }
+      if (account !== this.sessionChoice.account) {
+        this.sessionChoice = { account }
+      }
 
-        const sessions = this.appSessions(active, config)
+      const sessions = this.appSessions(active, config)
 
-        const preferred = sessions.find(
-          (session) =>
-            session.id === this.sessionChoice.teamId
+      const preferred = sessions.find(
+        (session) => session.id === this.sessionChoice.teamId
+      )
+
+      const ordered = preferred
+        ? [preferred, ...sessions.filter((session) => session !== preferred)]
+        : sessions
+
+      let lastError = 'No active Slack workspace session'
+
+      for (const session of ordered) {
+        if (!session.token) continue
+
+        const result = await this.tryFetchMemberships(
+          userId,
+          session.token,
+          onUpdate
         )
 
-        const ordered = preferred
-          ? [
-              preferred,
-              ...sessions.filter(
-                (session) => session !== preferred
-              ),
-            ]
-          : sessions
+        if (result.ok) {
+          this.sessionChoice.teamId = session.id
 
-        let lastError = 'No active Slack workspace session'
-
-        for (const session of ordered) {
-          if (!session.token) continue
-
-          const result = await this.tryFetchMemberships(
+          this.log(
+            'Fetched user memberships:',
             userId,
-            session.token,
-            onUpdate
+            result.conversations.length,
+            'using workspace session',
+            session.id
           )
 
-          if (result.ok) {
-            this.sessionChoice.teamId = session.id
-
-            this.log(
-              'Fetched user memberships:',
-              userId,
-              result.conversations.length,
-              'using workspace session',
-              session.id
-            )
-
-            return result.conversations
-          }
-
-          lastError = result.error
-
-          // try another session only for permission/auth errors
-          if (
-            !this.looksLikePermissionError(result.error)
-          ) {
-            break
-          }
+          return result.conversations
         }
 
-        this.log('fetchMemberships failed:', lastError)
-        return null
+        lastError = result.error
+
+        // try another session only for permission/auth errors
+        if (!this.looksLikePermissionError(result.error)) {
+          break
+        }
       }
-    )
+
+      this.log('fetchMemberships failed:', lastError)
+      return null
+    })
   }
 
-  private useMemberships(
-    userId: string | undefined
-  ) {
-    const [conversations, setConversations] =
-      React.useState<Conversation[] | null>(() =>
-        userId
-          ? (this.membershipsCache.get(userId) ?? null)
-          : null
-      )
+  private useMemberships(userId: string | undefined) {
+    const [conversations, setConversations] = React.useState<
+      Conversation[] | null
+    >(() => (userId ? (this.membershipsCache.get(userId) ?? null) : null))
 
     React.useEffect(() => {
       let cancelled = false
@@ -414,28 +388,40 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
     const { conversation } = props
     const Mrkdwn = this.api.elements.MrkdwnElement
 
-    const type = (props.showSpecificType) ? ` (${this.conversationType(conversation)})` : ``
+    const type = props.showSpecificType
+      ? ` (${this.conversationType(conversation)})`
+      : ``
 
     if (conversation.name) {
-      return <>{conversation.name}{type}</>
+      return (
+        <>
+          {conversation.name}
+          {type}
+        </>
+      )
     }
 
     if (conversation.is_im) {
-      return conversation.user
-        ? <Mrkdwn text={`<@${conversation.user}>${type}`} />
-        : <>{`Direct message: ${conversation.id}${type}`}</>
+      return conversation.user ? (
+        <Mrkdwn text={`<@${conversation.user}>${type}`} />
+      ) : (
+        <>{`Direct message: ${conversation.id}${type}`}</>
+      )
     }
 
     if (conversation.is_mpim) {
       return <Mrkdwn text={`<#${conversation.id}>${type}`} />
     }
 
-    return <>{conversation.id}{type}</>
+    return (
+      <>
+        {conversation.id}
+        {type}
+      </>
+    )
   }
 
-  private conversationType(
-    conversation: Conversation
-  ): string {
+  private conversationType(conversation: Conversation): string {
     if (conversation.is_im) return 'DM'
     if (conversation.is_mpim) return 'Group DM'
     if (conversation.is_private) return 'Private'
@@ -443,9 +429,7 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
     return 'Public'
   }
 
-  private isChannel(
-    conversation: Conversation
-  ): boolean {
+  private isChannel(conversation: Conversation): boolean {
     return !conversation.is_im && !conversation.is_mpim
   }
 
@@ -456,9 +440,7 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
     return !!userId && conversation.creator === userId
   }
 
-  private FilterButton = (
-    props: FilterButtonProps
-  ) => (
+  private FilterButton = (props: FilterButtonProps) => (
     <button
       type="button"
       className={`taut-user-memberships__filter${
@@ -483,7 +465,13 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
     const Mrkdwn = this.api.elements.MrkdwnElement
 
     if (!Mrkdwn) {
-      return <>{props.conversations.map((conversation) => `<#${conversation.id}>`).join(', ')}</>
+      return (
+        <>
+          {props.conversations
+            .map((conversation) => `<#${conversation.id}>`)
+            .join(', ')}
+        </>
+      )
     }
 
     // keep Slack-native channel mentions
@@ -492,10 +480,8 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
       .map((conversation) => {
         const mention = `<#${conversation.id}>`
 
-        return (this.isCreatedByUser(
-          conversation,
-          props.userId
-        ) && props.showCreatorIndicator)
+        return this.isCreatedByUser(conversation, props.userId) &&
+          props.showCreatorIndicator
           ? `${mention} (Creator)`
           : mention
       })
@@ -504,18 +490,13 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
     return <Mrkdwn text={text} />
   }
 
-  private MembershipsBlock = (props: {
-    userId?: string
-  }) => {
-    const conversations = this.useMemberships(
-      props.userId
-    )
+  private MembershipsBlock = (props: { userId?: string }) => {
+    const conversations = this.useMemberships(props.userId)
 
     const [activeFilter, setActiveFilter] =
       React.useState<MembershipFilter>('all')
 
-    const [showAll, setShowAll] =
-      React.useState(false)
+    const [showAll, setShowAll] = React.useState(false)
 
     if (!conversations || conversations.length === 0) {
       return null
@@ -545,63 +526,42 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
       (conversation) => !!conversation.is_archived
     )
 
-    const createdChannels = channels.filter(
-      (conversation) =>
-        this.isCreatedByUser(
-          conversation,
-          props.userId
-        )
+    const createdChannels = channels.filter((conversation) =>
+      this.isCreatedByUser(conversation, props.userId)
     )
 
-    const filteredConversations = conversations.filter(
-      (conversation) => {
-        switch (activeFilter) {
-          case 'public':
-            return (
-              this.isChannel(conversation) &&
-              !conversation.is_private
-            )
+    const filteredConversations = conversations.filter((conversation) => {
+      switch (activeFilter) {
+        case 'public':
+          return this.isChannel(conversation) && !conversation.is_private
 
-          case 'private':
-            return (
-              this.isChannel(conversation) &&
-              !!conversation.is_private
-            )
+        case 'private':
+          return this.isChannel(conversation) && !!conversation.is_private
 
-          case 'dms':
-            return !!conversation.is_im
+        case 'dms':
+          return !!conversation.is_im
 
-          case 'group-dms':
-            return !!conversation.is_mpim
+        case 'group-dms':
+          return !!conversation.is_mpim
 
-          case 'created':
-            return (
-              this.isChannel(conversation) &&
-              this.isCreatedByUser(
-                conversation,
-                props.userId
-              )
-            )
+        case 'created':
+          return (
+            this.isChannel(conversation) &&
+            this.isCreatedByUser(conversation, props.userId)
+          )
 
-          case 'archived':
-            return (
-              this.isChannel(conversation) &&
-              !!conversation.is_archived
-            )
+        case 'archived':
+          return this.isChannel(conversation) && !!conversation.is_archived
 
-          case 'all':
-          default:
-            return true
-        }
+        case 'all':
+        default:
+          return true
       }
-    )
+    })
 
     const visibleConversations = showAll
       ? filteredConversations
-      : filteredConversations.slice(
-        0,
-        MAX_VISIBLE_CHANNELS
-      )
+      : filteredConversations.slice(0, MAX_VISIBLE_CHANNELS)
 
     const remaining = Math.max(
       0,
@@ -666,9 +626,7 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
                 active={activeFilter === filter.id}
                 onClick={() => {
                   setActiveFilter((current) =>
-                    current === filter.id
-                      ? 'all'
-                      : filter.id
+                    current === filter.id ? 'all' : filter.id
                   )
 
                   setShowAll(false)
@@ -681,23 +639,20 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
         {visibleConversations.length > 0 && (
           <div className="taut-user-memberships__other">
             {visibleConversations.map((conversation) => (
-              <div
-                key={conversation.id}
-                className="taut-user-memberships__dm"
-              >
+              <div key={conversation.id} className="taut-user-memberships__dm">
                 {this.isChannel(conversation) ? (
                   <this.ChannelMentions
                     conversations={[conversation]}
                     userId={props.userId}
-                    showCreatorIndicator={
-                      activeFilter !== 'created'
-                    }
+                    showCreatorIndicator={activeFilter !== 'created'}
                   />
                 ) : (
-                    <this.ConversationLabel
-                      conversation={conversation}
-                      showSpecificType={activeFilter !== 'dms' && activeFilter !== 'group-dms'}
-                    />
+                  <this.ConversationLabel
+                    conversation={conversation}
+                    showSpecificType={
+                      activeFilter !== 'dms' && activeFilter !== 'group-dms'
+                    }
+                  />
                 )}
               </div>
             ))}
@@ -714,17 +669,15 @@ export default class UserMemberships extends TautPlugin<typeof UserMemberships> 
           </button>
         )}
 
-        {showAll &&
-          filteredConversations.length >
-          MAX_VISIBLE_CHANNELS && (
-            <button
-              type="button"
-              className="taut-user-memberships__more"
-              onClick={() => setShowAll(false)}
-            >
-              Show less
-            </button>
-          )}
+        {showAll && filteredConversations.length > MAX_VISIBLE_CHANNELS && (
+          <button
+            type="button"
+            className="taut-user-memberships__more"
+            onClick={() => setShowAll(false)}
+          >
+            Show less
+          </button>
+        )}
 
         {visibleConversations.length === 0 && (
           <div className="taut-user-memberships__empty">
