@@ -163,7 +163,11 @@ export type HintProps = {
   className?: string
 }
 
-export type SelectOption = { label: string; value: string }
+export type SelectOption = {
+  /** shown in the list and the closed select, so it can hold an emoji like `<MrkdwnElement text=":tada:" />` */
+  label: React.ReactNode
+  value: string
+}
 
 export type BasicSelectProps = {
   selectId: string
