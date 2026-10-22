@@ -75,10 +75,7 @@ function resolveSlackAsar(): string | undefined {
   const cached = cachedSlackAsar()
   if (cached) {
     // the previous version's Slack, after an update
-    app
-      .whenReady()
-      .then(() => pruneSlackCache())
-      .catch((err) => console.warn('[Taut] Slack cache cleanup failed:', err))
+    app.whenReady().then(() => pruneSlackCache())
     return cached
   }
   const installed = findInstalledSlackAsar()

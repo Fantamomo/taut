@@ -1,8 +1,13 @@
 // Simplifies and cleans up the message box
 
-import { TautPlugin } from '$taut'
+import { opt, TautPlugin } from '$taut'
 
 type TextyButtonsProps = Record<string, unknown>
+type SendOptions = Record<string, unknown>
+type InputContainerProps = {
+  dontShowBroadcastControls?: boolean
+  prepareAndSendMessage?: (options: SendOptions) => Promise<unknown>
+}
 type PrefPayload = { pref?: string; value?: unknown }
 type PrefsBoot = { prefsData?: Record<string, unknown> }
 
@@ -31,7 +36,7 @@ const oneLineWidth = (hidden: number) =>
 /** the props each option turns off when you set it false */
 const BUTTON_PROPS: Record<string, string[]> = {
   showFormattingToggle: ['enableComposerButton'],
-  showEmojiPicker: ['enableEmojiButton'],
+  showEmojiPicker: [],
   showMentionButton: ['enableMentionButton'],
   showVideoButton: ['enableStoryButton'],
   showAudioButton: ['enableAudioButton'],
@@ -115,14 +120,34 @@ export default class SlimMessageBox extends TautPlugin<typeof SlimMessageBox> {
   static readonly category = 'messageBox'
   static readonly defaultConfig = {
     enabled: false,
-    oneLineLayout: true,
-    showFormattingToggle: true,
-    showEmojiPicker: true,
-    showMentionButton: false,
-    showVideoButton: false,
-    showAudioButton: true,
-    showSlashButton: false,
-    showBroadcastCheckbox: true,
+    oneLineLayout: opt(
+      true,
+      'Puts the buttons beside the message when they fit, instead of on a row below it'
+    ),
+    showFormattingToggle: opt(
+      true,
+      'The "Aa" button, which shows and hides the formatting bar'
+    ),
+    showEmojiPicker: opt(true, 'The emoji button'),
+    showMentionButton: opt(false, 'The "@" button, which types "@"'),
+    showVideoButton: opt(false, 'The button that records a video clip'),
+    showAudioButton: opt(true, 'The button that records an audio clip'),
+    showSlashButton: opt(false, 'The "/" button, which types "/"'),
+    broadcast: opt.select(
+      [
+        { value: 'button', label: 'A toolbar button' },
+        { value: 'checkbox', label: 'A checkbox' },
+        { value: 'hidden', label: 'Hidden' },
+      ],
+      'button',
+      'Where "Also send to channel" goes in threads'
+    ),
+  }
+
+  static readonly migrateConfig = (saved: Record<string, unknown>) => {
+    if (typeof saved.showBroadcastCheckbox === 'boolean')
+      saved.broadcast ??= saved.showBroadcastCheckbox ? 'checkbox' : 'button'
+    delete saved.showBroadcastCheckbox
   }
 
   /** what the formatting bar was set to before we swapped ours in */
@@ -148,6 +173,14 @@ export default class SlimMessageBox extends TautPlugin<typeof SlimMessageBox> {
 
     this.api.setStyle(`
       ${SCOPE} .c-wysiwyg_container__footer_divider { display: none !important; }
+      ${
+        hidden.includes('showEmojiPicker')
+          ? `.c-texty_buttons .c-wysiwyg_container__button--emoji {
+              position: absolute !important;
+              visibility: hidden !important;
+            }`
+          : ''
+      }
     `)
 
     // slack ships minButtonsForOverflow: 5 against a group of 2, so its menu for narrow composers never opens
@@ -158,8 +191,28 @@ export default class SlimMessageBox extends TautPlugin<typeof SlimMessageBox> {
       )
     )
 
-    const broadcastCheckbox = this.config.showBroadcastCheckbox
-    if (!broadcastCheckbox) {
+    const { broadcast } = this.config
+    if (broadcast === 'hidden') {
+      this.api.patchComponent<InputContainerProps>(
+        'InputContainer',
+        (Original) => (props) => {
+          const send = props.prepareAndSendMessage
+          // override it to always be false
+          const sendToThread = React.useCallback(
+            async (options: SendOptions) =>
+              send?.({ ...options, shouldBroadcast: false }),
+            [send]
+          )
+          return (
+            <Original
+              {...props}
+              dontShowBroadcastControls
+              {...(send && { prepareAndSendMessage: sendToThread })}
+            />
+          )
+        }
+      )
+    } else if (broadcast === 'button') {
       // we need slack to still render the checkbox, since its props are the only way to reach the value
       this.api.setStyle(`
         .p-threads_footer__input_container { min-height: 0; }
@@ -195,7 +248,7 @@ export default class SlimMessageBox extends TautPlugin<typeof SlimMessageBox> {
     }
 
     if (this.config.oneLineLayout)
-      this.api.setStyle(layoutCss(hidden.length, broadcastCheckbox))
+      this.api.setStyle(layoutCss(hidden.length, broadcast === 'checkbox'))
 
     this.separateFormattingBar()
 

@@ -83,7 +83,9 @@ export type MenuTemplateItem = {
   key: string
   label?: React.ReactNode
   description?: React.ReactNode
-  type?: 'submenu' | 'separator' | 'header' | 'custom'
+  type?: 'submenu' | 'separator' | 'header' | 'custom' | 'radio' | 'checkbox'
+  /** for `radio` and `checkbox` items */
+  checked?: boolean
   /** the rows of a `submenu` item */
   template?: MenuTemplateItem[]
   /** an `SvgIcon` name */
@@ -176,6 +178,8 @@ export type BasicSelectProps = {
   onSelectionChange: (option: SelectOption) => void
   /** pixels, or a CSS length like "100%" */
   width?: number | string
+  /** medium by default */
+  size?: 'small' | 'medium' | 'large'
   ariaLabel?: string
   selectDataQa?: string
   isDisabled?: boolean
@@ -226,8 +230,19 @@ export type ProfileHoverTriggerProps = {
 
 export type MenuFromTemplateProps = { template?: MenuTemplateItem[] }
 
+/** a corner like `bottom-left` lines the popover up with that edge of its trigger */
+export type PopoverPosition =
+  | 'top'
+  | 'bottom'
+  | 'left'
+  | 'right'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right'
+
 export type MenuTriggerProps = {
-  position?: 'top' | 'bottom' | 'left' | 'right'
+  position?: PopoverPosition
   isDisabled?: boolean
   renderMenu: (menuProps: object) => React.ReactNode
   children?: React.ReactNode
@@ -250,6 +265,7 @@ export type FormTextInputProps = {
   isRequired?: boolean
   size?: 'small' | 'medium' | 'large'
   autoFocus?: boolean
+  inputRef?: React.Ref<HTMLInputElement>
   autoComplete?: string
   maxCharacterLimit?: number | null
   className?: string

@@ -10,6 +10,7 @@ A plugin is one file in `plugins/` whose default export is a class extending `Ta
 - `description` is one short sentence, repeated as a comment on the file's first line.
 - `defaultConfig` has `enabled` first, then each option in display order, wrapped in `opt()` or an `opt.*` helper so settings gets the right control and help text. Secrets use `opt.secret`, never a plain option. Only options someone set are stored, and the rest follow the defaults, which are filled in before your plugin sees `this.config`, so read it directly without fallbacks.
 - Set a `category`, and `hackClubOnly` if the plugin only makes sense in the Hack Club Slack.
+- When a released option changes shape, add `static migrateConfig(saved)` to rewrite the old keys in place. It runs on every boot, so it must be idempotent.
 - Anything you inject by name (class names, keys, DOM ids, container names) is `taut-<thing>`, in BEM style, spelled out in words.
 
 ## Lifecycle

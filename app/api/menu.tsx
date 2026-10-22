@@ -1,11 +1,15 @@
 import { reactPromise } from '../slack/react'
-import { elementsAPIPromise, type MenuTemplateItem } from './elements'
+import {
+  elementsAPIPromise,
+  type MenuTemplateItem,
+  type PopoverPosition,
+} from './elements'
 
 export type { MenuTemplateItem }
 
 export interface MenuProps {
   template: MenuTemplateItem[]
-  position?: 'top' | 'bottom' | 'left' | 'right'
+  position?: PopoverPosition
   /** the element that opens the menu */
   children?: React.ReactNode
 }

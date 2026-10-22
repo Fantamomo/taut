@@ -527,6 +527,22 @@ export class PluginManager {
     return names
   }
 
+  /** runs the plugin's `migrateConfig` on its saved block, writing only when that changes it */
+  private async migrateConfig(id: string, PluginClass: TautPluginConstructor) {
+    const migrate = PluginClass.migrateConfig
+    const block = this.configStore.getConfig().plugins[id]
+    if (!migrate || typeof block !== 'object' || block === null) return
+    try {
+      const migrated = structuredClone(block)
+      migrate(migrated)
+      if (deepEqual(migrated, block)) return
+      if (!(await this.configStore.editPluginConfig(id, migrate)))
+        console.warn(`[Taut] Couldn't save ${id}'s migrated config`)
+    } catch (error) {
+      console.warn(`[Taut] ${id}.migrateConfig failed:`, error)
+    }
+  }
+
   /** the set `opt.secret` values, with `migrate` one left in config.json moves to secret storage if it can */
   private async readSecrets(
     id: string,
@@ -798,10 +814,12 @@ export class PluginManager {
     source: PluginSource
   ): Promise<string | null> {
     // a plugin that can't run here leaves config.json alone
+    const runsHere = this.runsHere(PluginClass)
+    if (runsHere) await this.migrateConfig(id, PluginClass)
     const secrets = await this.readSecrets(
       id,
       PluginClass.defaultConfig,
-      this.runsHere(PluginClass)
+      runsHere
     )
     const resolved = resolveConfig(
       PluginClass.defaultConfig,

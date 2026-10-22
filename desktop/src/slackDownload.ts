@@ -6,7 +6,7 @@ import {
   readFileSync,
   renameSync,
 } from 'node:fs'
-import { access, mkdir, readdir, rename, rm } from 'node:fs/promises'
+import { access, mkdir, readdir, rename } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -23,10 +23,12 @@ import {
   slackNativeArches,
 } from './nativeModules.js'
 import { configDir } from './paths.js'
-import { extractDebDir, extractZipDir } from './slackArchive.js'
+import { extractDebDir, extractZipDir, originalFs } from './slackArchive.js'
 
 declare const __TAUT_SLACK_VERSION__: string
 export const SLACK_VERSION = __TAUT_SLACK_VERSION__
+
+const { rm } = originalFs.promises
 
 const CDN = 'https://downloads.slack-edge.com/desktop-releases'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -168,9 +170,12 @@ async function fetchSlack(
   await downloadSlackNatives(work, arch).catch((err) =>
     console.warn('[Taut] arm64 slack-desktop-utils download failed:', err)
   )
-  await rename(work, path.join(root, name))
-  await rm(work, { recursive: true, force: true })
-  await rm(archive, { force: true })
+  const dest = path.join(root, name)
+  await rm(dest, { recursive: true, force: true })
+  await rename(work, dest)
+  await rm(archive, { force: true }).catch((err) =>
+    console.warn(`[Taut] Couldn't remove ${archive}:`, err)
+  )
   await pruneSlackCache(name)
   console.log(`[Taut] Slack ${name} ready`)
 }
@@ -196,7 +201,10 @@ export async function pruneSlackCache(keep?: string) {
       ? age < 0 || !arches.has(arch as Arch)
       : age <= 0 || !!unfinished
     if (stale)
-      await rm(path.join(root, entry), { recursive: true, force: true })
+      await rm(path.join(root, entry), { recursive: true, force: true }).catch(
+        (err) =>
+          console.warn(`[Taut] Couldn't remove Slack cache ${entry}:`, err)
+      )
   }
 }
 

@@ -2,8 +2,6 @@
 
 import { opt, TautPlugin } from '$taut'
 
-const global = globalThis as any
-
 type IdvStatusType = 'eligible' | 'over_18' | 'unverified' | 'loading'
 
 export default class IdvStatus extends TautPlugin<typeof IdvStatus> {
@@ -27,15 +25,19 @@ export default class IdvStatus extends TautPlugin<typeof IdvStatus> {
     ),
   }
 
-  private cache = new this.api.Cache<IdvStatusType>('idv_status', {
+  /** eligible and over 18 results */
+  private verified = new this.api.Cache<IdvStatusType>('idv_verified', {
     ttl: 24 * 60 * 60 * 1000,
+    maxSize: 5000,
+  })
+  /** every result, (unverified isn't kept very long, so when someone verifies it shows up quickly) */
+  private recent = new this.api.Cache<IdvStatusType>('idv_recent', {
+    ttl: 10 * 60 * 1000,
     maxSize: 5000,
   })
 
   async start() {
-    this.log('Starting')
-
-    await this.cache.load()
+    await Promise.all([this.verified.load(), this.recent.load()])
     if (this.api.signal.aborted) return
 
     this.api.patchComponent<{
@@ -51,7 +53,7 @@ export default class IdvStatus extends TautPlugin<typeof IdvStatus> {
           if (!userId || isBotMessage) return null
           if (!userId.startsWith('U') && !userId.startsWith('W')) return null
           if (userId === 'USLACKBOT') return null
-          return this.cache.get(userId) ?? 'loading'
+          return this.cachedIdvStatus(userId) ?? 'loading'
         }
       )
 
@@ -96,20 +98,16 @@ export default class IdvStatus extends TautPlugin<typeof IdvStatus> {
         }
       `
     )
-
-    global.tautIdvClearCache = () => this.cache.clear()
-
-    this.log('IDV Status loaded')
   }
 
-  stop(): void {
-    delete global.tautIdvClearCache
-
-    this.log('Stopped')
+  cachedIdvStatus(userId: string): IdvStatusType | undefined {
+    return this.verified.get(userId) ?? this.recent.get(userId)
   }
 
   async fetchIdvStatus(userId: string): Promise<IdvStatusType> {
-    return this.cache.fetch(userId, async () => {
+    const cached = this.cachedIdvStatus(userId)
+    if (cached) return cached
+    const status = await this.recent.fetch(userId, async () => {
       const url = new URL('https://identity.hackclub.com/api/external/check')
       url.searchParams.set('slack_id', userId)
       const response = await fetch(url, { signal: this.api.signal })
@@ -121,5 +119,7 @@ export default class IdvStatus extends TautPlugin<typeof IdvStatus> {
       if (data.result === 'verified_but_over_18') return 'over_18'
       return 'unverified'
     })
+    if (status !== 'unverified') this.verified.set(userId, status)
+    return status
   }
 }

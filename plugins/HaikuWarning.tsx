@@ -281,7 +281,8 @@ export default class HaikuWarning extends TautPlugin<typeof HaikuWarning> {
     this.loading = true
     try {
       await this.cache.load()
-      const dictionary = await this.cache.fetch(DICTIONARY_COMMIT, async () => {
+      const key = `${DICTIONARY_COMMIT}-compact`
+      const dictionary = await this.cache.fetch(key, async () => {
         const response = await this.api.fetch(DICTIONARY_URL, {
           signal: AbortSignal.any([
             this.api.signal,
@@ -293,7 +294,7 @@ export default class HaikuWarning extends TautPlugin<typeof HaikuWarning> {
         if (dictionary.length < 1_000_000) {
           throw new Error('Incomplete dictionary')
         }
-        return dictionary
+        return compactDictionary(dictionary, this.api.signal)
       })
       this.dictionary.set(dictionary)
     } catch (error) {
@@ -464,6 +465,29 @@ function findHaiku(
   return line === 3
     ? [lines[0].join(' '), lines[1].join(' '), lines[2].join(' ')]
     : null
+}
+
+/** drops the entries that the estimate already gets right */
+async function compactDictionary(
+  dictionary: string,
+  signal: AbortSignal
+): Promise<string> {
+  const kept: string[] = []
+  let yieldAt = 0
+  for (const line of dictionary.split('\n')) {
+    // estimating every word takes seconds, so work in short slices
+    if (performance.now() > yieldAt) {
+      await new Promise((resolve) => setTimeout(resolve))
+      signal.throwIfAborted()
+      yieldAt = performance.now() + 10
+    }
+    const separator = line.lastIndexOf(' ')
+    const word = line.slice(0, separator)
+    if (estimateSyllables(word) !== Number(line.slice(separator + 1))) {
+      kept.push(line)
+    }
+  }
+  return kept.join('\n')
 }
 
 /** binary search to skip building a 134k-entry Map, needs the dictionary sorted */

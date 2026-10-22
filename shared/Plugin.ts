@@ -273,6 +273,8 @@ export abstract class TautPlugin<P extends PluginLike = PluginLike> {
   static readonly category?: PluginCategory
   /** never started or shown in settings outside the Hack Club Slack */
   static readonly hackClubOnly?: boolean
+  /** rewrites its saved config in place before it's read, must leave migrated config unchanged (idempotent) */
+  static readonly migrateConfig?: (saved: Record<string, unknown>) => void
 
   /** shown in the Data section of its settings page while running, keep hooks inside the component it renders */
   dataPanel?(): React.ReactNode
@@ -309,4 +311,5 @@ export interface TautPluginConstructor {
   /** typed loosely, older or newer user plugins may name another category */
   readonly category?: string
   readonly hackClubOnly?: boolean
+  readonly migrateConfig?: (saved: Record<string, unknown>) => void
 }

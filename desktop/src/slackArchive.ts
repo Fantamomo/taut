@@ -8,13 +8,13 @@ import { Unzip, UnzipInflate } from 'fflate'
 import tar from 'tar-stream'
 import xz from 'xz-decompress'
 
-// electron's fs treats any path ending in .asar as an archive, which breaks writing Slack's app.asar, original-fs doesn't
+// electron's fs treats any path ending in .asar as an archive, which breaks writing or removing Slack's app.asar, original-fs doesn't
 const cjsRequire = createRequire(import.meta.url)
-const fs: typeof import('node:fs') = cjsRequire(
+export const originalFs: typeof import('node:fs') = cjsRequire(
   process.versions.electron ? 'original-fs' : 'node:fs'
 )
-const { createReadStream, createWriteStream } = fs
-const { mkdir, open, writeFile } = fs.promises
+const { createReadStream, createWriteStream } = originalFs
+const { mkdir, open, writeFile } = originalFs.promises
 
 const withSlash = (dir: string) => dir.replace(/^\.\//, '').replace(/\/?$/, '/')
 

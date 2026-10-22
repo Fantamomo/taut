@@ -73,7 +73,7 @@ export class ConfigStore {
   private configText = ''
   private userCssText = ''
   private config: TautConfig = { plugins: {} }
-  /** why the file can't be read, it's never overwritten while this is set */
+  /** why the file can't be read */
   private parseError: string | null = null
   /** false for the commented JSON Taut wrote before 3.0 */
   private plainJson = true
@@ -81,7 +81,6 @@ export class ConfigStore {
   private configListeners = new Set<Listener<TautConfig>>()
   private configTextListeners = new Set<Listener<string>>()
   private cssListeners = new Set<Listener<string>>()
-  private editQueue: Promise<void> = Promise.resolve()
 
   constructor(private bridge: TautBridge) {}
 
@@ -152,7 +151,7 @@ export class ConfigStore {
   }
 
   updateConfigText(newText: string): Promise<boolean> {
-    return this.queueEdit(() => this.writeText(newText))
+    return this.locked(() => this.writeText(newText))
   }
 
   private async writeText(newText: string): Promise<boolean> {
@@ -182,16 +181,17 @@ export class ConfigStore {
     )
   }
 
-  /** queued so no edit is computed from stale text, false while the file can't be read */
+  /** applies `change` to the saved file with a lock, false if the file can't be read */
   private edit(change: (config: TautConfig) => void): Promise<boolean> {
-    return this.queueEdit(async () => {
-      if (this.parseError) {
-        console.error(`[Taut] Not saving config: ${this.parseError}`)
+    return this.locked(async () => {
+      const saved = await parseConfig(await this.bridge.readConfigText())
+      if ('error' in saved) {
+        console.error(`[Taut] Not saving config: ${saved.error}`)
         return false
       }
-      const config = structuredClone(this.config)
+      const config = structuredClone(saved.config)
       change(config)
-      if (this.plainJson && deepEqual(config, this.config)) return true
+      if (saved.plain && deepEqual(config, saved.config)) return true
       return this.writeText(configText(config))
     })
   }
@@ -205,6 +205,19 @@ export class ConfigStore {
         cursor = cursor[key] as Record<string, unknown>
       }
       cursor[path[path.length - 1]] = value
+    })
+  }
+
+  /** applies `change` to a plugin's saved block if it has one, removing the block once it's empty */
+  editPluginConfig(
+    id: string,
+    change: (block: Record<string, unknown>) => void
+  ): Promise<boolean> {
+    return this.edit((config) => {
+      const block = config.plugins[id]
+      if (!isObject(block)) return
+      change(block)
+      if (Object.keys(block).length === 0) delete config.plugins[id]
     })
   }
 
@@ -267,13 +280,8 @@ export class ConfigStore {
     })
   }
 
-  private queueEdit<T>(task: () => Promise<T>): Promise<T> {
-    const result = this.editQueue.catch(() => {}).then(task)
-    this.editQueue = result.then(
-      () => {},
-      () => {}
-    )
-    return result
+  private async locked<T>(task: () => Promise<T>): Promise<T> {
+    return await navigator.locks.request('taut:config', task)
   }
 
   private notifyConfigListeners() {

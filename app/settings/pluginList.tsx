@@ -173,6 +173,14 @@ export function PluginList({
       />
     )
   }
+  const searchRef = React.useRef<HTMLInputElement>(null)
+  // the preferences dialog focuses its tab after the panel mounts
+  React.useEffect(() => {
+    const frame = requestAnimationFrame(() =>
+      searchRef.current?.focus({ preventScroll: true })
+    )
+    return () => cancelAnimationFrame(frame)
+  }, [])
   const order: string[] = [
     ...Object.values(PLUGIN_CATEGORIES),
     'User plugins',
@@ -190,6 +198,7 @@ export function PluginList({
           onChange={setQuery}
           placeholder="Search plugins"
           autoComplete="off"
+          inputRef={searchRef}
         />
       </div>
       <div className="taut-settings__filters">
