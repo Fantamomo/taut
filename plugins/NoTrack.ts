@@ -42,11 +42,8 @@ export default class NoTrack extends TautPlugin<typeof NoTrack> {
 
   private matchers: RegExp[] = []
   private running = false
-  private originalFetch: typeof window.fetch | null = null
-  private originalXHROpen: typeof XMLHttpRequest.prototype.open | null = null
-  private originalSendBeacon: typeof navigator.sendBeacon | null = null
-  private sendBeaconWasOwn = false
-  private restorePipelines: (() => void)[] = []
+  private blockedXHRs = new WeakSet<XMLHttpRequest>()
+  private restores: (() => void)[] = []
 
   private isBlocked(url: string): boolean {
     return this.matchers.some((re) => re.test(url))
@@ -62,17 +59,28 @@ export default class NoTrack extends TautPlugin<typeof NoTrack> {
     return this.api.waitForExport<T>(this.api.byName(name))
   }
 
+  // restored on stop only while target[key] is still value
+  private replace<T extends object, K extends keyof T>(
+    target: T,
+    key: K,
+    value: T[K]
+  ): void {
+    const own = Object.getOwnPropertyDescriptor(target, key)
+    target[key] = value
+    this.restores.push(() => {
+      if (target[key] !== value) return
+      if (own) Object.defineProperty(target, key, own)
+      else delete target[key]
+    })
+  }
+
   private async stopTracing(): Promise<void> {
     const getGenericTracer =
       await this.exportByName<() => any>('getGenericTracer')
     if (!this.running) return
     const proto = Object.getPrototypeOf(getGenericTracer())
-    const original = proto.shouldSample
-    if (typeof original !== 'function') return
-    proto.shouldSample = () => false
-    this.restorePipelines.push(() => {
-      proto.shouldSample = original
-    })
+    if (typeof proto.shouldSample !== 'function') return
+    this.replace(proto, 'shouldSample', () => false)
   }
 
   private async stopMetrics(): Promise<void> {
@@ -84,13 +92,16 @@ export default class NoTrack extends TautPlugin<typeof NoTrack> {
 
     const real = Object.getPrototypeOf(getGenericTelemeter())
     const noop = Object.getPrototypeOf(getNoopTelemeter())
+    const keep = new Set([
+      'clearMarks',
+      'clearMeasures',
+      'emptyMetrics',
+      'measureAndClear',
+    ])
     for (const name of Object.getOwnPropertyNames(noop)) {
-      if (name === 'constructor' || typeof noop[name] !== 'function') continue
-      const original = real[name]
-      real[name] = noop[name]
-      this.restorePipelines.push(() => {
-        real[name] = original
-      })
+      if (name === 'constructor' || keep.has(name)) continue
+      if (typeof noop[name] !== 'function') continue
+      this.replace(real, name, noop[name])
     }
   }
 
@@ -98,37 +109,57 @@ export default class NoTrack extends TautPlugin<typeof NoTrack> {
     this.running = true
     this.matchers = TRACKING_PATTERNS.map(globToRegex)
 
-    this.originalFetch = window.fetch
-    const originalFetch = this.originalFetch
-    window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-      if (this.isBlocked(NoTrack.urlString(input))) {
-        return Promise.resolve(new Response('', { status: 200 }))
-      }
-      return originalFetch(input, init)
-    }
+    const fetch = window.fetch
+    this.replace(window, 'fetch', (input, init) =>
+      this.isBlocked(NoTrack.urlString(input))
+        ? Promise.reject(new TypeError('Failed to fetch'))
+        : fetch(input, init)
+    )
 
-    this.originalXHROpen = XMLHttpRequest.prototype.open
-    const originalOpen = this.originalXHROpen
-    const isBlocked = this.isBlocked.bind(this)
-    XMLHttpRequest.prototype.open = function (
-      method: string,
-      url: string | URL,
-      ...rest: any[]
-    ) {
-      // still opened so setRequestHeader works, and a reused xhr gets its send back
-      if (isBlocked(url.toString())) this.send = () => {}
-      else delete (this as Partial<XMLHttpRequest>).send
-      return Reflect.apply(originalOpen, this, [method, url, ...rest])
-    }
+    const plugin = this
+    const { open, send } = XMLHttpRequest.prototype
+    this.replace(
+      XMLHttpRequest.prototype,
+      'open',
+      function (
+        this: XMLHttpRequest,
+        method: string,
+        url: string | URL,
+        ...rest: any[]
+      ) {
+        Reflect.deleteProperty(this, 'readyState')
+        if (plugin.isBlocked(url.toString())) plugin.blockedXHRs.add(this)
+        else plugin.blockedXHRs.delete(this)
+        return Reflect.apply(open, this, [method, url, ...rest])
+      }
+    )
+    this.replace(
+      XMLHttpRequest.prototype,
+      'send',
+      function (
+        this: XMLHttpRequest,
+        body?: Document | XMLHttpRequestBodyInit | null
+      ) {
+        if (!plugin.blockedXHRs.has(this))
+          return Reflect.apply(send, this, [body])
+        // fails like a network error so the sender gives up
+        setTimeout(() => {
+          Object.defineProperty(this, 'readyState', {
+            value: XMLHttpRequest.DONE,
+            configurable: true,
+          })
+          this.dispatchEvent(new Event('readystatechange'))
+          this.dispatchEvent(new ProgressEvent('error'))
+          this.dispatchEvent(new ProgressEvent('loadend'))
+        })
+      }
+    )
 
     if (typeof navigator.sendBeacon === 'function') {
-      this.originalSendBeacon = navigator.sendBeacon
-      this.sendBeaconWasOwn = Object.hasOwn(navigator, 'sendBeacon')
-      const originalSendBeacon = navigator.sendBeacon.bind(navigator)
-      navigator.sendBeacon = (url: string | URL, data?: BodyInit | null) => {
-        if (this.isBlocked(NoTrack.urlString(url))) return true
-        return originalSendBeacon(url, data)
-      }
+      const sendBeacon = navigator.sendBeacon.bind(navigator)
+      this.replace(navigator, 'sendBeacon', (url, data) =>
+        this.isBlocked(NoTrack.urlString(url)) ? true : sendBeacon(url, data)
+      )
     }
 
     const failed = (error: unknown) =>
@@ -141,24 +172,8 @@ export default class NoTrack extends TautPlugin<typeof NoTrack> {
 
   stop(): void {
     this.running = false
-    if (this.originalFetch) {
-      window.fetch = this.originalFetch
-      this.originalFetch = null
-    }
-    if (this.originalXHROpen) {
-      XMLHttpRequest.prototype.open = this.originalXHROpen
-      this.originalXHROpen = null
-    }
-    if (this.originalSendBeacon) {
-      if (this.sendBeaconWasOwn) {
-        navigator.sendBeacon = this.originalSendBeacon
-      } else {
-        delete (navigator as Partial<Navigator>).sendBeacon
-      }
-      this.originalSendBeacon = null
-    }
-    for (const restore of this.restorePipelines.reverse()) restore()
-    this.restorePipelines = []
+    for (const restore of this.restores.reverse()) restore()
+    this.restores = []
     this.matchers = []
     this.log('Stopped')
   }

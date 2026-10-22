@@ -2,7 +2,7 @@
 
 import { TautPlugin } from '$taut'
 
-type RestrictedTo = { type?: string[]; user?: string[] }
+type RestrictedTo = { role?: string[]; type?: string[]; user?: string[] }
 type Channel = {
   properties?: {
     posting_restricted_to?: RestrictedTo
@@ -110,8 +110,9 @@ export default class RestrictedChannelWarning extends TautPlugin<
 
     // lets us post only because we're admin, we're not explicitly listed
     const adminOnly = (restriction: RestrictedTo | undefined) =>
-      ['admin', 'org_admin'].includes(restriction?.type?.[0] ?? '') &&
-      !restriction?.user?.includes(userId)
+      ['admin', 'org_admin'].includes(
+        (restriction?.role ?? restriction?.type)?.[0] ?? ''
+      ) && !restriction?.user?.includes(userId)
     const { posting_restricted_to, threads_restricted_to } = channel.properties
     const post =
       !wasReadOnly && !wasThreadOnly && !adminOnly(posting_restricted_to)

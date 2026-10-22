@@ -88,7 +88,8 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
     maxSize: 5000,
   })
   private pendingApps = new Set<string>()
-  private failedApps = new Set<string>()
+  /** keys sent to messages.list and not cached yet, either inflight or failed */
+  private requestedApps = new Set<string>()
   private appTimer: ReturnType<typeof setTimeout> | null = null
 
   private readonly SenderContext = React.createContext<
@@ -148,7 +149,7 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
     const key = `${msg.channel}:${msg.ts}`
     const known = this.apps.get(key)
     if (known !== undefined) return known ?? undefined
-    if (!this.failedApps.has(key)) this.queueApp(key)
+    if (!this.requestedApps.has(key)) this.queueApp(key)
     return undefined
   }
 
@@ -174,6 +175,7 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
       }
       timestamps.push(key.slice(split + 1))
       this.pendingApps.delete(key)
+      this.requestedApps.add(key)
       taken++
     }
     return byChannel
@@ -208,11 +210,11 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
               `${channel}:${msg.ts}`,
               typeof msg.app_id === 'string' ? msg.app_id : null
             )
-      for (const key of keys)
+      for (const key of keys) {
         if (this.apps.get(key) === undefined) this.apps.set(key, null)
-    } catch {
-      for (const key of keys) this.failedApps.add(key)
-    }
+        this.requestedApps.delete(key)
+      }
+    } catch {}
     if (this.api.signal.aborted) return
     this.api.redux.refresh()
     if (this.pendingApps.size) this.queueApp()
@@ -253,12 +255,36 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
     return memberId ? { memberId } : undefined
   }
 
+  private readonly SenderBadge = ({
+    msg,
+    size,
+    corner,
+  }: {
+    msg: SlackMessage
+    size: number
+    corner: string
+  }) => {
+    const sender = this.useSender(msg)
+    return sender ? (
+      <this.Badge {...sender} size={size} corner={corner} />
+    ) : null
+  }
+
+  private readonly DenseSenderBadge = ({ msg }: { msg: SlackMessage }) => {
+    const dense = this.api.redux.useReduxState(
+      (state) => state.userPrefs?.messages_theme === 'dense'
+    )
+    return dense ? (
+      <this.SenderBadge msg={msg} size={18} corner="inline" />
+    ) : null
+  }
+
   private readonly Badged = ({
     msg,
     size,
     children,
   }: {
-    msg: SlackMessage | undefined
+    msg: SlackMessage
     size?: number
     children: React.ReactNode
   }) => {
@@ -356,7 +382,10 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
     // get copies of the message into the context
     this.provideMessage('MessageBackground', (props) => props.msg)
     this.provideMessage('MessageAvatar', (props) => props.msg)
-    this.provideMessage('SearchResult', (props) => props)
+    this.provideMessage('SearchResult', (props) => ({
+      ...props,
+      channel: props.channel?.id ?? props.channel,
+    }))
     this.provideMessage('MessageAttachment', (props) => {
       const { getRawMessage } = this.api.messages
       const stored =
@@ -376,12 +405,10 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
       'ConnectedBaseAvatar',
       (Original) => (props) => {
         const msg = React.useContext(this.SenderContext)
-        const drawn =
-          msg && drawsSender(props.className)
-            ? { ...msg, user: props.userId }
-            : undefined
+        if (!msg || !drawsSender(props.className))
+          return <Original {...props} />
         return (
-          <this.Badged msg={drawn} size={props.size}>
+          <this.Badged msg={{ ...msg, user: props.userId }} size={props.size}>
             <Original {...props} />
           </this.Badged>
         )
@@ -419,13 +446,12 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
       },
       (Original) => (props) => {
         const msg = React.useContext(this.SenderContext)
-        const sender = this.useSender(msg)
         const slot = isCompactGutter(props.compact)
           ? 'compact'
           : isCompactGutter(props.light)
             ? 'light'
             : null
-        if (!sender || !slot) return <Original {...props} />
+        if (!msg || !slot) return <Original {...props} />
         return (
           <Original
             {...props}
@@ -433,7 +459,7 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
               [slot]: (
                 <>
                   {props[slot]}
-                  <this.Badge {...sender} size={18} corner="gutter" />
+                  <this.SenderBadge msg={msg} size={18} corner="gutter" />
                 </>
               ),
             }}
@@ -452,15 +478,11 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
     )
     this.api.patchComponent('MessageSender', (Original) => (props: object) => {
       const msg = React.useContext(this.ThreadSenderContext)
-      const dense = this.api.redux.useReduxState(
-        (state) => state.userPrefs?.messages_theme === 'dense'
-      )
-      const sender = this.useSender(msg)
-      if (!dense || !sender) return <Original {...props} />
+      if (!msg) return <Original {...props} />
       return (
         <>
           <Original {...props} />
-          <this.Badge {...sender} size={18} corner="inline" />
+          <this.DenseSenderBadge msg={msg} />
         </>
       )
     })

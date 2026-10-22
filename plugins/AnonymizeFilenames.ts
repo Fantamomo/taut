@@ -19,8 +19,8 @@ function fileExtension(name: string): string {
   return dot > 0 ? base.slice(dot) : ''
 }
 
-export default class AnonymizeFileNames extends TautPlugin<
-  typeof AnonymizeFileNames
+export default class AnonymizeFilenames extends TautPlugin<
+  typeof AnonymizeFilenames
 > {
   static readonly id = 'AnonymizeFilenames'
   static readonly pluginName = 'Anonymize Filenames'
@@ -32,46 +32,52 @@ export default class AnonymizeFileNames extends TautPlugin<
     enabled: false,
   }
 
-  private originalDescriptor: PropertyDescriptor | null = null
-  private cache = new WeakMap<File, string>()
+  /** each file to its renamed copy, and each copy to itself */
+  private renamed = new WeakMap<File, File>()
 
   start(): void {
-    const descriptor = Object.getOwnPropertyDescriptor(File.prototype, 'name')
-    if (
-      !descriptor ||
-      typeof descriptor.get !== 'function' ||
-      !descriptor.configurable
-    ) {
-      this.log('Warning: File.prototype.name is not patchable')
-      return
-    }
-
-    this.originalDescriptor = descriptor
-    const originalGet = descriptor.get
-    const cache = this.cache
-
-    Object.defineProperty(File.prototype, 'name', {
-      configurable: true,
-      enumerable: descriptor.enumerable,
-      get: function (this: File) {
-        const real = String(originalGet.call(this))
-        let anonymized = cache.get(this)
-        if (anonymized !== undefined) return anonymized
-        anonymized = randomName() + fileExtension(real)
-        cache.set(this, anonymized)
-        return anonymized
-      },
-    })
-
-    this.log('Started')
+    this.api.redux.patchThunk(
+      'addAndUploadPendingFile',
+      (original) =>
+        (args: { file?: unknown }, ...rest: unknown[]) =>
+          original(
+            args?.file ? { ...args, file: this.anonymize(args.file) } : args,
+            ...rest
+          )
+    )
+    this.api.redux.patchThunk(
+      'uploadFiles',
+      (original) =>
+        (args: { files?: unknown }, ...rest: unknown[]) =>
+          original(
+            Array.isArray(args?.files)
+              ? {
+                  ...args,
+                  files: args.files.map((file) => this.anonymize(file)),
+                }
+              : args,
+            ...rest
+          )
+    )
   }
 
-  stop(): void {
-    if (this.originalDescriptor) {
-      Object.defineProperty(File.prototype, 'name', this.originalDescriptor)
-      this.originalDescriptor = null
+  private anonymize(file: unknown): unknown {
+    // a file picked in a pop-out comes from that window's File, so instanceof misses it
+    if (Object.prototype.toString.call(file) !== '[object File]') return file
+    const original = file as File
+    let copy = this.renamed.get(original)
+    if (!copy) {
+      // Slack reads properties it set on the file, like subtype and id
+      copy = Object.assign(
+        new File([original], randomName() + fileExtension(original.name), {
+          type: original.type,
+          lastModified: original.lastModified,
+        }),
+        original
+      )
+      this.renamed.set(original, copy)
+      this.renamed.set(copy, copy)
     }
-    this.cache = new WeakMap()
-    this.log('Stopped')
+    return copy
   }
 }

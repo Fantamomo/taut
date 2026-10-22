@@ -42,6 +42,7 @@ export default class ClearURLs extends TautPlugin<typeof ClearURLs> {
 
   private cache = new this.api.Cache<RulesData>('clearurls_rules', {
     ttl: 7 * 24 * 60 * 60 * 1000,
+    staleIfError: true,
   })
   private providers: Provider[] = []
   private extraRules: ExtraRule[] = []
@@ -56,31 +57,19 @@ export default class ClearURLs extends TautPlugin<typeof ClearURLs> {
   }
 
   private async loadRules(): Promise<void> {
-    const cached = this.cache.get('data')
-    if (cached) {
-      this.buildProviders(cached)
-      this.log(
-        'Loaded rules from cache:',
-        Object.keys(cached.providers).length,
-        'providers'
-      )
-      return
-    }
-
     try {
-      const response = await fetch(
-        'https://raw.githubusercontent.com/ClearURLs/Rules/master/data.min.json',
-        { signal: this.api.signal }
-      )
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const data = (await response.json()) as RulesData
-      this.cache.set('data', data)
+      const data = await this.cache.fetch('data', async () => {
+        const response = await fetch(
+          'https://raw.githubusercontent.com/ClearURLs/Rules/master/data.min.json',
+          { signal: this.api.signal }
+        )
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const data = (await response.json()) as RulesData
+        if (!data?.providers) throw new Error('No providers in the rules')
+        return data
+      })
       this.buildProviders(data)
-      this.log(
-        'Fetched rules:',
-        Object.keys(data.providers).length,
-        'providers'
-      )
+      this.log('Loaded rules:', Object.keys(data.providers).length, 'providers')
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       this.log('Failed to fetch rules:', e)

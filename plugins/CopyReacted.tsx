@@ -2,11 +2,17 @@
 
 import { type MenuTemplateItem, opt, TautPlugin } from '$taut'
 
-type SlackReaction = { name?: string; users?: string[] }
-type ReactionBarProps = { reactions?: SlackReaction[] }
+type SlackReaction = { name?: string; users?: string[]; count: number }
+type ReactionBarProps = { reactionKey?: string; reactions?: SlackReaction[] }
+type Reactions = { reactionKey?: string; reactions: SlackReaction[] }
+
+const REACTION_KEY_RE = /^message-(\d+\.\d+)-([A-Z0-9]+)$/
 
 // stable identity, so context consumers don't rerender
-const NO_REACTIONS: SlackReaction[] = []
+const NO_REACTIONS: Reactions = { reactions: [] }
+
+const isPartial = (reaction: SlackReaction) =>
+  reaction.count > (reaction.users?.length ?? 0)
 
 export default class CopyReacted extends TautPlugin<typeof CopyReacted> {
   static readonly id = 'CopyReacted'
@@ -38,7 +44,7 @@ export default class CopyReacted extends TautPlugin<typeof CopyReacted> {
   }
 
   private readonly ReactionsContext =
-    React.createContext<SlackReaction[]>(NO_REACTIONS)
+    React.createContext<Reactions>(NO_REACTIONS)
 
   private async reactorName(userId: string): Promise<string> {
     const member = await this.api.members.getMember(userId)
@@ -55,8 +61,47 @@ export default class CopyReacted extends TautPlugin<typeof CopyReacted> {
     return `@${member?.name || userId}`
   }
 
-  private async copyReactors(userIds: string[]): Promise<void> {
-    const reactors = [...new Set(userIds)]
+  /** everyone who reacted with `reactions`, fetched if needed */
+  private async reactorIds({
+    reactionKey,
+    reactions,
+  }: Reactions): Promise<string[]> {
+    if (reactions.some(isPartial)) {
+      const [, timestamp, channel] =
+        REACTION_KEY_RE.exec(reactionKey ?? '') ?? []
+      if (!timestamp || !channel)
+        throw new Error(`no message for ${reactionKey}`)
+      const res = await this.api.within(
+        (signal) =>
+          this.api.userAPI<{ message?: { reactions?: SlackReaction[] } }>(
+            'reactions.get',
+            { channel, timestamp, full: 'true' },
+            { signal }
+          ),
+        10_000
+      )
+      if (!res) throw new Error('reactions.get timed out')
+      const names = new Set(reactions.map((r) => r.name))
+      reactions = (res.message?.reactions ?? []).filter((r) =>
+        names.has(r.name)
+      )
+    }
+    return [...new Set(reactions.flatMap((r) => r.users ?? []))]
+  }
+
+  private async copyReactors(target: Reactions): Promise<void> {
+    let reactors: string[]
+    try {
+      reactors = await this.reactorIds(target)
+    } catch (err) {
+      if (this.api.signal.aborted) return
+      this.log('could not load reactors', err)
+      this.api.modal.alert({
+        title: 'Could not copy',
+        body: 'Could not load everyone who reacted.',
+      })
+      return
+    }
     if (!reactors.length) return
     const separator = { space: ' ', newline: '\n', comma: ', ' }[
       this.config.separator
@@ -80,18 +125,21 @@ export default class CopyReacted extends TautPlugin<typeof CopyReacted> {
   }
 
   private readonly CopyButton = () => {
-    const reactions = React.useContext(this.ReactionsContext)
+    const { reactionKey, reactions } = React.useContext(this.ReactionsContext)
     if (!reactions.length) return null
 
     const { Menu } = this.api.menu
     const { SvgIcon, MrkdwnElement } = this.api.elements
 
-    const everyone = [...new Set(reactions.flatMap((r) => r.users ?? []))]
+    const known = new Set(reactions.flatMap((r) => r.users ?? [])).size
+    const everyone = reactions.some(isPartial)
+      ? `${Math.max(known, ...reactions.map((r) => r.count))}+`
+      : known
     const template: MenuTemplateItem[] = [
       {
         key: 'taut-copy-reacted__everyone',
-        label: `Everyone (${everyone.length})`,
-        click: () => this.copyReactors(everyone),
+        label: `Everyone (${everyone})`,
+        click: () => this.copyReactors({ reactionKey, reactions }),
       },
     ]
     if (reactions.length > 1) {
@@ -100,11 +148,10 @@ export default class CopyReacted extends TautPlugin<typeof CopyReacted> {
           key: `taut-copy-reacted__${reaction.name}`,
           // mrkdwn renders the emoji as an image
           label: (
-            <MrkdwnElement
-              text={`:${reaction.name}: (${reaction.users?.length ?? 0})`}
-            />
+            <MrkdwnElement text={`:${reaction.name}: (${reaction.count})`} />
           ),
-          click: () => this.copyReactors(reaction.users ?? []),
+          click: () =>
+            this.copyReactors({ reactionKey, reactions: [reaction] }),
         })
       }
     }
@@ -143,11 +190,18 @@ export default class CopyReacted extends TautPlugin<typeof CopyReacted> {
 
     this.api.patchComponent<ReactionBarProps>(
       'ReactionBar',
-      (Original) => (props) => (
-        <this.ReactionsContext.Provider value={props.reactions ?? NO_REACTIONS}>
-          <Original {...props} />
-        </this.ReactionsContext.Provider>
-      )
+      (Original) => (props) => {
+        const { reactionKey, reactions } = props
+        const value = React.useMemo(
+          () => (reactions ? { reactionKey, reactions } : NO_REACTIONS),
+          [reactionKey, reactions]
+        )
+        return (
+          <this.ReactionsContext.Provider value={value}>
+            <Original {...props} />
+          </this.ReactionsContext.Provider>
+        )
+      }
     )
 
     // last child inside the bar, so the chip stays in the row

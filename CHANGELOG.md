@@ -12,6 +12,10 @@ Each release is a `## x.y.z` heading, and each change is one bullet:
 ## 3.1.4
 
 - **Haiku Warning**: Choose a banner, a pop-up, or both, the icon is the Orpheus emoji, and the banner no longer flashes while typing
+- **Custom Name Recording**: Now converts non-MP3 files to MP3 for Slack
+- **Copy Reacted**: Fixed copying more than 50 people
+- **Anonymize Filenames**: Fixed in pop-out windows 
+- **Show Sending Bot**: Fixed the app badge missing on specific messages in search
 
 ## 3.1.2
 
