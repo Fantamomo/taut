@@ -22,13 +22,6 @@ const TRACKING_PATTERNS = [
   '*://*.slack-edge.com/*/slack_beacon.*',
 ]
 
-function globToRegex(pattern: string): RegExp {
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*')
-  return new RegExp(`^${escaped}$`, 'i')
-}
-
 export default class NoTrack extends TautPlugin<typeof NoTrack> {
   static readonly id = 'NoTrack'
   static readonly pluginName = 'No Tracking'
@@ -177,4 +170,11 @@ export default class NoTrack extends TautPlugin<typeof NoTrack> {
     this.matchers = []
     this.log('Stopped')
   }
+}
+
+function globToRegex(pattern: string): RegExp {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+  return new RegExp(`^${escaped}$`, 'i')
 }

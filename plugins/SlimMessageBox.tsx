@@ -16,23 +16,6 @@ const SCOPE = '.p-message_input__input_container_unstyled'
 /** slack's account-wide pref for the formatting bar, in `state.userPrefs` */
 const FORMATTING_PREF = 'msg_input_sticky_composer'
 
-// a sync copy so boot doesn't flash the wrong state
-const readMirror = (): boolean | undefined => {
-  const raw = localStorage.getItem('taut_slim_message_box_formatting')
-  return raw === null ? undefined : raw === 'true'
-}
-const writeMirror = (value: boolean) =>
-  localStorage.setItem('taut_slim_message_box_formatting', String(value))
-
-/** the message claims this much, and the buttons sit beside it only if they fit */
-const MIN_EDITOR_WIDTH = 450
-
-/** an estimate since a container query can't measure the buttons, a wrong one only costs message width */
-const SLACK_BUTTON_ROW = 340
-const BUTTON_WIDTH = 32
-const oneLineWidth = (hidden: number) =>
-  `${MIN_EDITOR_WIDTH + SLACK_BUTTON_ROW - hidden * BUTTON_WIDTH}px`
-
 /** the props each option turns off when you set it false */
 const BUTTON_PROPS: Record<string, string[]> = {
   showFormattingToggle: ['enableComposerButton'],
@@ -43,74 +26,7 @@ const BUTTON_PROPS: Record<string, string[]> = {
   showSlashButton: ['enableSlashCommandsButton', 'enableShortcutsButton'],
 }
 
-// slack's layout stays for attachments, which need the full width
-const ONE_LINE = `${SCOPE}:not(.c-wysiwyg_container--with_input_overlay):not(:has(.c-wysiwyg_container__attachments, .p-message_input__attachments, .c-pending_files, .c-message__editor__composer_attachments))`
-
 const BROADCAST = '.p-threads_footer__input_container__broadcast_controls'
-
-const layoutCss = (hiddenButtons: number, broadcastCheckbox: boolean) => `
-  ${SCOPE} { container: taut-composer / inline-size; }
-
-  ${ONE_LINE} .c-basic_container__body {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: wrap;
-    align-items: flex-end !important;
-    column-gap: 6px;
-  }
-  /* whatever slack stacks above the editor (alerts, the formatting bar) keeps a full-width row, in its grid-template-areas order */
-  ${ONE_LINE} .c-basic_container__body > * { order: 0; flex: 1 0 100%; }
-  ${ONE_LINE} .c-basic_container__body > :empty { display: none; }
-  ${ONE_LINE} .c-wysiwyg_container__formatting { order: 1; }
-  ${ONE_LINE} .c-wysiwyg_container__message_suggestions { order: 2; }
-  ${ONE_LINE} .c-texty_input_unstyled__container {
-    order: 3;
-    flex: 100 1 0% !important;
-    min-width: min(${MIN_EDITOR_WIDTH}px, 100%);
-  }
-  ${ONE_LINE} .c-wysiwyg_container__draft { order: 4; }
-  ${ONE_LINE} .p-threads_footer__input_container__broadcast_controls {
-    order: 5;
-    flex: 1 0 100%;
-  }
-  /* last and whole so attach, buttons and send wrap together, full width below the query since the contained row measures ~0 there */
-  ${ONE_LINE} .c-wysiwyg_container__footer {
-    display: flex !important;
-    order: 6;
-    flex: 1 0 100% !important;
-    flex-wrap: wrap;
-    min-width: 0;
-  }
-  ${ONE_LINE} .c-wysiwyg_container__suffix {
-    margin-left: auto !important;
-    flex: 0 0 auto !important;
-  }
-
-  @container taut-composer (min-width: ${oneLineWidth(hiddenButtons)}) {
-    ${ONE_LINE} .c-wysiwyg_container__footer { flex: 1 1 auto !important; }
-    ${
-      broadcastCheckbox
-        ? `
-          /* no min-width so the toolbar always fits beside the message and the checkbox stays below, a cap strands send on its own row */
-          ${ONE_LINE}:has(${BROADCAST}) .c-texty_input_unstyled__container {
-            min-width: 0 !important;
-          }
-          /* slack leaves this no bottom padding, having always had the buttons below it */
-          ${ONE_LINE} ${BROADCAST} {
-            order: 7;
-            padding-bottom: 8px;
-          }
-        `
-        : ''
-    }
-    /* slack's row is container-type: inline-size so it comes out 0 wide beside the message, and with no box the overflow menu's offsetWidth test sees nothing to do */
-    ${ONE_LINE} .c-wysiwyg_container__toolbar_buttons {
-      flex: 0 1 auto !important;
-      min-width: 0 !important;
-    }
-    ${ONE_LINE} .c-texty_buttons { display: contents !important; }
-  }
-`
 
 export default class SlimMessageBox extends TautPlugin<typeof SlimMessageBox> {
   static readonly id = 'SlimMessageBox'
@@ -347,3 +263,87 @@ export default class SlimMessageBox extends TautPlugin<typeof SlimMessageBox> {
     })
   }
 }
+
+// a sync copy so boot doesn't flash the wrong state
+const readMirror = (): boolean | undefined => {
+  const raw = localStorage.getItem('taut_slim_message_box_formatting')
+  return raw === null ? undefined : raw === 'true'
+}
+const writeMirror = (value: boolean) =>
+  localStorage.setItem('taut_slim_message_box_formatting', String(value))
+
+/** the message claims this much, and the buttons sit beside it only if they fit */
+const MIN_EDITOR_WIDTH = 450
+
+/** an estimate since a container query can't measure the buttons, a wrong one only costs message width */
+const SLACK_BUTTON_ROW = 340
+const BUTTON_WIDTH = 32
+const oneLineWidth = (hidden: number) =>
+  `${MIN_EDITOR_WIDTH + SLACK_BUTTON_ROW - hidden * BUTTON_WIDTH}px`
+
+// slack's layout stays for attachments, which need the full width
+const ONE_LINE = `${SCOPE}:not(.c-wysiwyg_container--with_input_overlay):not(:has(.c-wysiwyg_container__attachments, .p-message_input__attachments, .c-pending_files, .c-message__editor__composer_attachments))`
+
+const layoutCss = (hiddenButtons: number, broadcastCheckbox: boolean) => `
+  ${SCOPE} { container: taut-composer / inline-size; }
+
+  ${ONE_LINE} .c-basic_container__body {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    align-items: flex-end !important;
+    column-gap: 6px;
+  }
+  /* whatever slack stacks above the editor (alerts, the formatting bar) keeps a full-width row, in its grid-template-areas order */
+  ${ONE_LINE} .c-basic_container__body > * { order: 0; flex: 1 0 100%; }
+  ${ONE_LINE} .c-basic_container__body > :empty { display: none; }
+  ${ONE_LINE} .c-wysiwyg_container__formatting { order: 1; }
+  ${ONE_LINE} .c-wysiwyg_container__message_suggestions { order: 2; }
+  ${ONE_LINE} .c-texty_input_unstyled__container {
+    order: 3;
+    flex: 100 1 0% !important;
+    min-width: min(${MIN_EDITOR_WIDTH}px, 100%);
+  }
+  ${ONE_LINE} .c-wysiwyg_container__draft { order: 4; }
+  ${ONE_LINE} .p-threads_footer__input_container__broadcast_controls {
+    order: 5;
+    flex: 1 0 100%;
+  }
+  /* last and whole so attach, buttons and send wrap together, full width below the query since the contained row measures ~0 there */
+  ${ONE_LINE} .c-wysiwyg_container__footer {
+    display: flex !important;
+    order: 6;
+    flex: 1 0 100% !important;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  ${ONE_LINE} .c-wysiwyg_container__suffix {
+    margin-left: auto !important;
+    flex: 0 0 auto !important;
+  }
+
+  @container taut-composer (min-width: ${oneLineWidth(hiddenButtons)}) {
+    ${ONE_LINE} .c-wysiwyg_container__footer { flex: 1 1 auto !important; }
+    ${
+      broadcastCheckbox
+        ? `
+          /* no min-width so the toolbar always fits beside the message and the checkbox stays below, a cap strands send on its own row */
+          ${ONE_LINE}:has(${BROADCAST}) .c-texty_input_unstyled__container {
+            min-width: 0 !important;
+          }
+          /* slack leaves this no bottom padding, having always had the buttons below it */
+          ${ONE_LINE} ${BROADCAST} {
+            order: 7;
+            padding-bottom: 8px;
+          }
+        `
+        : ''
+    }
+    /* slack's row is container-type: inline-size so it comes out 0 wide beside the message, and with no box the overflow menu's offsetWidth test sees nothing to do */
+    ${ONE_LINE} .c-wysiwyg_container__toolbar_buttons {
+      flex: 0 1 auto !important;
+      min-width: 0 !important;
+    }
+    ${ONE_LINE} .c-texty_buttons { display: contents !important; }
+  }
+`

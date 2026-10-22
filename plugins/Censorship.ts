@@ -2,31 +2,6 @@
 
 import { opt, TautPlugin } from '$taut'
 
-const WORD_CHAR = /[\p{L}\p{N}_]/u
-
-/** one alternative per term, whole words only, any whitespace between words */
-function termPattern(term: string): string {
-  let pattern = term.split(/\s+/).map(RegExp.escape).join('\\s+')
-  const chars = Array.from(term)
-  if (WORD_CHAR.test(chars[0])) pattern = `(?<![\\p{L}\\p{N}_])${pattern}`
-  if (WORD_CHAR.test(chars[chars.length - 1]))
-    pattern = `${pattern}(?![\\p{L}\\p{N}_])`
-  return pattern
-}
-
-function compileTerms(terms: string[]): RegExp | null {
-  const clean = terms
-    .map((term) => term.trim())
-    .filter(Boolean)
-    .sort((a, b) => b.length - a.length)
-  if (!clean.length) return null
-  try {
-    return new RegExp(clean.map(termPattern).join('|'), 'giu')
-  } catch {
-    return null
-  }
-}
-
 export default class Censorship extends TautPlugin<typeof Censorship> {
   static readonly id = 'Censorship'
   static readonly pluginName = 'Censorship'
@@ -91,5 +66,30 @@ export default class Censorship extends TautPlugin<typeof Censorship> {
 
     this.api.messages.patchMessageText(this.censorString)
     this.log('Started')
+  }
+}
+
+const WORD_CHAR = /[\p{L}\p{N}_]/u
+
+/** one alternative per term, whole words only, any whitespace between words */
+function termPattern(term: string): string {
+  let pattern = term.split(/\s+/).map(RegExp.escape).join('\\s+')
+  const chars = Array.from(term)
+  if (WORD_CHAR.test(chars[0])) pattern = `(?<![\\p{L}\\p{N}_])${pattern}`
+  if (WORD_CHAR.test(chars[chars.length - 1]))
+    pattern = `${pattern}(?![\\p{L}\\p{N}_])`
+  return pattern
+}
+
+function compileTerms(terms: string[]): RegExp | null {
+  const clean = terms
+    .map((term) => term.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+  if (!clean.length) return null
+  try {
+    return new RegExp(clean.map(termPattern).join('|'), 'giu')
+  } catch {
+    return null
   }
 }

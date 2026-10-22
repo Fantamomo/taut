@@ -17,35 +17,6 @@ const PROVIDERS: { key: Provider; label: string; domain: string }[] = [
   { key: 'appleMusic', label: 'Apple Music', domain: 'music.apple.com' },
 ]
 
-const decodeEntities = (value: string) =>
-  value
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-
-function embedSource(html: string): URL | undefined {
-  const src = /<iframe\b[^>]*?\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(html)
-  if (!src) return undefined
-  try {
-    const url = new URL(decodeEntities(src[1] ?? src[2] ?? ''))
-    return url.protocol === 'https:' || url.protocol === 'http:'
-      ? url
-      : undefined
-  } catch {
-    return undefined
-  }
-}
-
-function providerFor(url: URL): { key: Provider; label: string } {
-  const host = url.hostname
-  const known = PROVIDERS.find(
-    ({ domain }) => host === domain || host.endsWith(`.${domain}`)
-  )
-  return known ?? { key: 'other', label: host.replace(/^www\./, '') }
-}
-
 export default class ClickToLoad extends TautPlugin<typeof ClickToLoad> {
   static readonly id = 'ClickToLoad'
   static readonly pluginName = 'Click to Load'
@@ -152,4 +123,33 @@ export default class ClickToLoad extends TautPlugin<typeof ClickToLoad> {
       </div>
     </div>
   )
+}
+
+const decodeEntities = (value: string) =>
+  value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+
+function embedSource(html: string): URL | undefined {
+  const src = /<iframe\b[^>]*?\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(html)
+  if (!src) return undefined
+  try {
+    const url = new URL(decodeEntities(src[1] ?? src[2] ?? ''))
+    return url.protocol === 'https:' || url.protocol === 'http:'
+      ? url
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function providerFor(url: URL): { key: Provider; label: string } {
+  const host = url.hostname
+  const known = PROVIDERS.find(
+    ({ domain }) => host === domain || host.endsWith(`.${domain}`)
+  )
+  return known ?? { key: 'other', label: host.replace(/^www\./, '') }
 }

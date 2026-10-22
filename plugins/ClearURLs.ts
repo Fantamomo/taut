@@ -23,8 +23,6 @@ type Provider = {
 
 type ExtraRule = { param: RegExp; host: RegExp | null }
 
-const wildcard = (value: string) => RegExp.escape(value).replace(/\\\*/g, '.*?')
-
 export default class ClearURLs extends TautPlugin<typeof ClearURLs> {
   static readonly id = 'ClearURLs'
   static readonly pluginName = 'Clear URLs'
@@ -161,3 +159,5 @@ export default class ClearURLs extends TautPlugin<typeof ClearURLs> {
     return removed ? parsed.toString() : url
   }
 }
+
+const wildcard = (value: string) => RegExp.escape(value).replace(/\\\*/g, '.*?')

@@ -20,29 +20,6 @@ type ThreadHeaderProps = {
 
 const MAX_LENGTH = 40
 
-const USER_ID_RE = /^[UW][A-Z0-9]+$/
-const isPerson = (
-  msg: Message | undefined
-): msg is Message & { user: string } =>
-  !!msg?.user &&
-  USER_ID_RE.test(msg.user) &&
-  msg.user !== 'USLACKBOT' &&
-  !msg.bot_id
-
-// grouped messages get the same children back with visible: false
-const isHeaderChild = (child: React.ReactNode, prop: string): boolean => {
-  const props = React.isValidElement(child) ? child.props : null
-  if (typeof props !== 'object' || props === null) return false
-  return prop in props && (props as { visible?: boolean }).visible !== false
-}
-
-const isTimestamp = (child: React.ReactNode) =>
-  isHeaderChild(child, 'clickable')
-
-// compact mode moves the timestamp to the left gutter, so sit after the sender
-const isSender = (child: React.ReactNode) =>
-  isHeaderChild(child, 'isInteractive')
-
 export default class UserPronouns extends TautPlugin<typeof UserPronouns> {
   static readonly id = 'UserPronouns'
   static readonly pluginName = 'User Pronouns'
@@ -149,3 +126,26 @@ export default class UserPronouns extends TautPlugin<typeof UserPronouns> {
     this.log('Started')
   }
 }
+
+const USER_ID_RE = /^[UW][A-Z0-9]+$/
+const isPerson = (
+  msg: Message | undefined
+): msg is Message & { user: string } =>
+  !!msg?.user &&
+  USER_ID_RE.test(msg.user) &&
+  msg.user !== 'USLACKBOT' &&
+  !msg.bot_id
+
+// grouped messages get the same children back with visible: false
+const isHeaderChild = (child: React.ReactNode, prop: string): boolean => {
+  const props = React.isValidElement(child) ? child.props : null
+  if (typeof props !== 'object' || props === null) return false
+  return prop in props && (props as { visible?: boolean }).visible !== false
+}
+
+const isTimestamp = (child: React.ReactNode) =>
+  isHeaderChild(child, 'clickable')
+
+// compact mode moves the timestamp to the left gutter, so sit after the sender
+const isSender = (child: React.ReactNode) =>
+  isHeaderChild(child, 'isInteractive')

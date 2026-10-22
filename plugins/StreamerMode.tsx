@@ -15,48 +15,6 @@ type MessageProps = { msg?: { channel?: string }; className?: string }
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform)
 
-function parseShortcut(value: unknown): Shortcut | null {
-  if (typeof value !== 'string') return null
-  const parts = value
-    .toLowerCase()
-    .split('+')
-    .map((part) => part.trim())
-  const key = parts.pop()
-  if (!key) return null
-  const mods = new Set(parts)
-  const shortcut = {
-    code: /^[a-z]$/.test(key)
-      ? `Key${key.toUpperCase()}`
-      : /^[0-9]$/.test(key)
-        ? `Digit${key}`
-        : key,
-    key,
-    mod: mods.has('mod') || mods.has('cmd') || mods.has('ctrl'),
-    shift: mods.has('shift'),
-    alt: mods.has('alt') || mods.has('option'),
-  }
-  // without one of these it would fire while someone is typing
-  return shortcut.mod || shortcut.alt ? shortcut : null
-}
-
-/** the thread a row belongs to, from the key its list item carries */
-function threadOf(row: Element): string {
-  const key = row.getAttribute('data-item-key') ?? ''
-  const [channel, ts] = key.replace(/^(?:heading|root|footer)-/, '').split('-')
-  return ts ? `${channel}-${ts}` : ''
-}
-
-function matches(event: KeyboardEvent, shortcut: Shortcut): boolean {
-  const mod = IS_MAC ? event.metaKey : event.ctrlKey
-  return (
-    (event.code === shortcut.code ||
-      event.key.toLowerCase() === shortcut.key) &&
-    mod === shortcut.mod &&
-    event.shiftKey === shortcut.shift &&
-    event.altKey === shortcut.alt
-  )
-}
-
 export default class StreamerMode extends TautPlugin<typeof StreamerMode> {
   static readonly id = 'StreamerMode'
   static readonly pluginName = 'Streamer Mode'
@@ -403,4 +361,46 @@ export default class StreamerMode extends TautPlugin<typeof StreamerMode> {
       }
     `
   }
+}
+
+function parseShortcut(value: unknown): Shortcut | null {
+  if (typeof value !== 'string') return null
+  const parts = value
+    .toLowerCase()
+    .split('+')
+    .map((part) => part.trim())
+  const key = parts.pop()
+  if (!key) return null
+  const mods = new Set(parts)
+  const shortcut = {
+    code: /^[a-z]$/.test(key)
+      ? `Key${key.toUpperCase()}`
+      : /^[0-9]$/.test(key)
+        ? `Digit${key}`
+        : key,
+    key,
+    mod: mods.has('mod') || mods.has('cmd') || mods.has('ctrl'),
+    shift: mods.has('shift'),
+    alt: mods.has('alt') || mods.has('option'),
+  }
+  // without one of these it would fire while someone is typing
+  return shortcut.mod || shortcut.alt ? shortcut : null
+}
+
+/** the thread a row belongs to, from the key its list item carries */
+function threadOf(row: Element): string {
+  const key = row.getAttribute('data-item-key') ?? ''
+  const [channel, ts] = key.replace(/^(?:heading|root|footer)-/, '').split('-')
+  return ts ? `${channel}-${ts}` : ''
+}
+
+function matches(event: KeyboardEvent, shortcut: Shortcut): boolean {
+  const mod = IS_MAC ? event.metaKey : event.ctrlKey
+  return (
+    (event.code === shortcut.code ||
+      event.key.toLowerCase() === shortcut.key) &&
+    mod === shortcut.mod &&
+    event.shiftKey === shortcut.shift &&
+    event.altKey === shortcut.alt
+  )
 }

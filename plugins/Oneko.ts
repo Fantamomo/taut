@@ -5,72 +5,6 @@ import { opt, type PluginConfig, type TautAPI, TautPlugin } from '$taut'
 const NEKO_FILE =
   'https://raw.githubusercontent.com/adryd325/oneko.js/46b0684f29694eaf3252835003f4d9d0258556e5/oneko.gif'
 
-type SpriteCoordinates = [number, number]
-type SpriteMap = Record<string, SpriteCoordinates[]>
-
-const SPRITE_SETS: SpriteMap = {
-  idle: [[-3, -3]],
-  alert: [[-7, -3]],
-  scratchSelf: [
-    [-5, 0],
-    [-6, 0],
-    [-7, 0],
-  ],
-  scratchWallN: [
-    [0, 0],
-    [0, -1],
-  ],
-  scratchWallS: [
-    [-7, -1],
-    [-6, -2],
-  ],
-  scratchWallE: [
-    [-2, -2],
-    [-2, -3],
-  ],
-  scratchWallW: [
-    [-4, 0],
-    [-4, -1],
-  ],
-  tired: [[-3, -2]],
-  sleeping: [
-    [-2, 0],
-    [-2, -1],
-  ],
-  N: [
-    [-1, -2],
-    [-1, -3],
-  ],
-  NE: [
-    [0, -2],
-    [0, -3],
-  ],
-  E: [
-    [-3, 0],
-    [-3, -1],
-  ],
-  SE: [
-    [-5, -1],
-    [-5, -2],
-  ],
-  S: [
-    [-6, -3],
-    [-7, -2],
-  ],
-  SW: [
-    [-5, -3],
-    [-6, -1],
-  ],
-  W: [
-    [-4, -2],
-    [-4, -3],
-  ],
-  NW: [
-    [-1, 0],
-    [-1, -1],
-  ],
-}
-
 type OnekoState = {
   nekoPosX: number
   nekoPosY: number
@@ -362,4 +296,70 @@ export default class Oneko extends TautPlugin<typeof Oneko> {
     this.nekoEl.style.left = `${this.nekoPosX - 16}px`
     this.nekoEl.style.top = `${this.nekoPosY - 16}px`
   }
+}
+
+type SpriteCoordinates = [number, number]
+type SpriteMap = Record<string, SpriteCoordinates[]>
+
+const SPRITE_SETS: SpriteMap = {
+  idle: [[-3, -3]],
+  alert: [[-7, -3]],
+  scratchSelf: [
+    [-5, 0],
+    [-6, 0],
+    [-7, 0],
+  ],
+  scratchWallN: [
+    [0, 0],
+    [0, -1],
+  ],
+  scratchWallS: [
+    [-7, -1],
+    [-6, -2],
+  ],
+  scratchWallE: [
+    [-2, -2],
+    [-2, -3],
+  ],
+  scratchWallW: [
+    [-4, 0],
+    [-4, -1],
+  ],
+  tired: [[-3, -2]],
+  sleeping: [
+    [-2, 0],
+    [-2, -1],
+  ],
+  N: [
+    [-1, -2],
+    [-1, -3],
+  ],
+  NE: [
+    [0, -2],
+    [0, -3],
+  ],
+  E: [
+    [-3, 0],
+    [-3, -1],
+  ],
+  SE: [
+    [-5, -1],
+    [-5, -2],
+  ],
+  S: [
+    [-6, -3],
+    [-7, -2],
+  ],
+  SW: [
+    [-5, -3],
+    [-6, -1],
+  ],
+  W: [
+    [-4, -2],
+    [-4, -3],
+  ],
+  NW: [
+    [-1, 0],
+    [-1, -1],
+  ],
 }

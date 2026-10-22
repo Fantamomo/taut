@@ -17,32 +17,6 @@ type UnreadCounts = { unreadCnt?: number }
 
 const SENDERS = new Set(['USLACKBOT', 'USLACK'])
 
-const COMMAND_TAKEN_OVER = new RegExp(
-  [
-    '^Your workspace has been using `(/[^`]+)` to kick off certain actions with (.+)\\. ',
-    'Recently,? (.+) was installed to (.+) with the same command\\. ',
-    "Now,? when people enter `(/[^`]+)`, it(?:'|\u2019|&#39;)ll run the action set up by (.+)\\. ",
-    'You can learn more about <https://slack\\.com/help/articles/201259356-Slash-commands-in-Slack\\|managing app installation settings> in the Help Cent(?:er|re)\\.$',
-  ].join('')
-)
-
-function isCommandNotice(msg: Notice | undefined): boolean {
-  if (!msg || typeof msg.text !== 'string') return false
-  if (typeof msg.user !== 'string' || !SENDERS.has(msg.user)) return false
-  if (typeof msg.channel !== 'string' || !msg.channel.startsWith('D'))
-    return false
-  // custom responses, reminders and apps posting as Slackbot all set one of these
-  if (msg.subtype || msg.bot_id || msg.app_id) return false
-  if (msg.thread_ts && msg.thread_ts !== msg.ts) return false
-  const match = COMMAND_TAKEN_OVER.exec(msg.text)
-  // the command is named twice and so is the new app, and they must agree
-  return !!match && match[1] === match[5] && match[3] === match[6]
-}
-
-const isNewer = (ts: unknown, than: unknown): ts is string =>
-  typeof ts === 'string' &&
-  (typeof than !== 'string' || Number.parseFloat(ts) > Number.parseFloat(than))
-
 export default class ShutUpSlackbot extends TautPlugin<typeof ShutUpSlackbot> {
   static readonly id = 'ShutUpSlackbot'
   static readonly pluginName = 'Shut Up Slackbot'
@@ -170,3 +144,29 @@ export default class ShutUpSlackbot extends TautPlugin<typeof ShutUpSlackbot> {
     return any ? dms : undefined
   }
 }
+
+const COMMAND_TAKEN_OVER = new RegExp(
+  [
+    '^Your workspace has been using `(/[^`]+)` to kick off certain actions with (.+)\\. ',
+    'Recently,? (.+) was installed to (.+) with the same command\\. ',
+    "Now,? when people enter `(/[^`]+)`, it(?:'|\u2019|&#39;)ll run the action set up by (.+)\\. ",
+    'You can learn more about <https://slack\\.com/help/articles/201259356-Slash-commands-in-Slack\\|managing app installation settings> in the Help Cent(?:er|re)\\.$',
+  ].join('')
+)
+
+function isCommandNotice(msg: Notice | undefined): boolean {
+  if (!msg || typeof msg.text !== 'string') return false
+  if (typeof msg.user !== 'string' || !SENDERS.has(msg.user)) return false
+  if (typeof msg.channel !== 'string' || !msg.channel.startsWith('D'))
+    return false
+  // custom responses, reminders and apps posting as Slackbot all set one of these
+  if (msg.subtype || msg.bot_id || msg.app_id) return false
+  if (msg.thread_ts && msg.thread_ts !== msg.ts) return false
+  const match = COMMAND_TAKEN_OVER.exec(msg.text)
+  // the command is named twice and so is the new app, and they must agree
+  return !!match && match[1] === match[5] && match[3] === match[6]
+}
+
+const isNewer = (ts: unknown, than: unknown): ts is string =>
+  typeof ts === 'string' &&
+  (typeof than !== 'string' || Number.parseFloat(ts) > Number.parseFloat(than))

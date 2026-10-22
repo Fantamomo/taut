@@ -18,55 +18,6 @@ type ActivityAvatarProps = {
 
 const SERVICE_RE = /\/services\/(B[A-Z0-9]+)/
 
-/** whether an avatar is the one a surface draws for a message's sender */
-const drawsSender = (className = '') =>
-  [
-    'c-message_kit__avatar',
-    'c-search_message__avatar',
-    'c-message_attachment__author_icon',
-  ].some((name) => className.split(' ').includes(name))
-
-/** the activity view's two badge sizes, and the avatar each pairs with */
-const badgeSize = (avatar = 36) => (avatar >= 32 ? 20 : 14)
-
-/** whether a gutter slot holds the timestamp a grouped message draws */
-const isCompactGutter = (slot: React.ReactNode) => {
-  if (!React.isValidElement<{ className?: string }>(slot)) return false
-  // the thread gutter is a memo, so its name is on the inner component
-  const type = slot.type as { type?: { displayName?: string } }
-  return (
-    (slot.props.className ?? '').includes(
-      'p-message_pane_message__compact_timestamp'
-    ) || type.type?.displayName === 'ThreadCompactGutterGeneric'
-  )
-}
-
-type ContextBlock = {
-  type?: string
-  elements?: { type?: string; text?: unknown }[]
-}
-
-const MCP_FOOTER_RE = /^\*Sent using\*\s+<@([UW][A-Z0-9]+)>$/
-/** the bot from an MCP message's footer */
-const mcpFooterMember = (msg?: SlackMessage): string | undefined => {
-  const blocks = msg?.blocks as ContextBlock[] | undefined
-  const last = Array.isArray(blocks) ? blocks[blocks.length - 1] : undefined
-  if (last?.type !== 'context' || last.elements?.length !== 1) return undefined
-  const [element] = last.elements
-  if (element?.type !== 'mrkdwn') return undefined
-  return MCP_FOOTER_RE.exec(String(element.text ?? '').trim())?.[1]
-}
-
-const withoutMcpFooter = (msg: SlackMessage): SlackMessage => {
-  const next: SlackMessage = {
-    ...msg,
-    blocks: (msg.blocks as unknown[]).slice(0, -1),
-  }
-  if (Array.isArray(msg.blocksProcessed))
-    next.blocksProcessed = msg.blocksProcessed.slice(0, -1)
-  return next
-}
-
 export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
   static readonly id = 'ShowSendingBot'
   static readonly pluginName = 'Show Sending Bot'
@@ -500,4 +451,53 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
 
     this.log('Started')
   }
+}
+
+/** whether an avatar is the one a surface draws for a message's sender */
+const drawsSender = (className = '') =>
+  [
+    'c-message_kit__avatar',
+    'c-search_message__avatar',
+    'c-message_attachment__author_icon',
+  ].some((name) => className.split(' ').includes(name))
+
+/** the activity view's two badge sizes, and the avatar each pairs with */
+const badgeSize = (avatar = 36) => (avatar >= 32 ? 20 : 14)
+
+/** whether a gutter slot holds the timestamp a grouped message draws */
+const isCompactGutter = (slot: React.ReactNode) => {
+  if (!React.isValidElement<{ className?: string }>(slot)) return false
+  // the thread gutter is a memo, so its name is on the inner component
+  const type = slot.type as { type?: { displayName?: string } }
+  return (
+    (slot.props.className ?? '').includes(
+      'p-message_pane_message__compact_timestamp'
+    ) || type.type?.displayName === 'ThreadCompactGutterGeneric'
+  )
+}
+
+type ContextBlock = {
+  type?: string
+  elements?: { type?: string; text?: unknown }[]
+}
+
+const MCP_FOOTER_RE = /^\*Sent using\*\s+<@([UW][A-Z0-9]+)>$/
+/** the bot from an MCP message's footer */
+const mcpFooterMember = (msg?: SlackMessage): string | undefined => {
+  const blocks = msg?.blocks as ContextBlock[] | undefined
+  const last = Array.isArray(blocks) ? blocks[blocks.length - 1] : undefined
+  if (last?.type !== 'context' || last.elements?.length !== 1) return undefined
+  const [element] = last.elements
+  if (element?.type !== 'mrkdwn') return undefined
+  return MCP_FOOTER_RE.exec(String(element.text ?? '').trim())?.[1]
+}
+
+const withoutMcpFooter = (msg: SlackMessage): SlackMessage => {
+  const next: SlackMessage = {
+    ...msg,
+    blocks: (msg.blocks as unknown[]).slice(0, -1),
+  }
+  if (Array.isArray(msg.blocksProcessed))
+    next.blocksProcessed = msg.blocksProcessed.slice(0, -1)
+  return next
 }

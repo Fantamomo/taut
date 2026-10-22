@@ -27,22 +27,6 @@ const SLASH_COMMAND_RE = /^[/\uFF0F][^/\uFF0F\s]/
 const DRAFT_ID_RE = /^([A-Z0-9]+)-(\d+\.\d+)$/
 const REACTION_KEY_RE = /^message-(\d+\.\d+)-([A-Z0-9]+)$/
 
-/** owl's confirmation, in its modal or its DM, as shown when you submit */
-function parseConfirmation(blocks: unknown): Confirmation | undefined {
-  if (!Array.isArray(blocks)) return
-  const text = blocks
-    .map((block: Block) => block?.text?.text)
-    .filter((t) => typeof t === 'string')
-    .join('\n')
-  const id = /(?:Post|Confession) #(\d+)/.exec(text)?.[1]
-  if (!id) return
-  const key = /Your private reply key:\n([0-9a-f]{64})/.exec(text)?.[1]
-  if (key) return { id, replyKey: key }
-  if (text.includes('recognized through its salted hash')) {
-    return { id, replyKey: null }
-  }
-}
-
 export default class OwlMode extends TautPlugin<typeof OwlMode> {
   static readonly id = 'OwlMode'
   static readonly pluginName = 'Owl Mode'
@@ -863,5 +847,21 @@ export default class OwlMode extends TautPlugin<typeof OwlMode> {
     const message = err instanceof Error ? err.message : String(err)
     this.log(title, message)
     this.api.modal.alert({ title, body: message })
+  }
+}
+
+/** owl's confirmation, in its modal or its DM, as shown when you submit */
+function parseConfirmation(blocks: unknown): Confirmation | undefined {
+  if (!Array.isArray(blocks)) return
+  const text = blocks
+    .map((block: Block) => block?.text?.text)
+    .filter((t) => typeof t === 'string')
+    .join('\n')
+  const id = /(?:Post|Confession) #(\d+)/.exec(text)?.[1]
+  if (!id) return
+  const key = /Your private reply key:\n([0-9a-f]{64})/.exec(text)?.[1]
+  if (key) return { id, replyKey: key }
+  if (text.includes('recognized through its salted hash')) {
+    return { id, replyKey: null }
   }
 }

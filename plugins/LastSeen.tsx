@@ -22,54 +22,6 @@ type StoreMessage = {
 const MAX_SEEN = 2000
 const SCAN_EVERY = 15_000
 
-/** the id, unless a bot posted under it with an xoxp */
-const human = (msg: RtmEvent | undefined, id: unknown) =>
-  msg && typeof id === 'string' && !msg.bot_id && !msg.app_id ? id : undefined
-
-const when = (event: RtmEvent): number => {
-  const at = Number.parseFloat(event.event_ts ?? event.ts ?? '')
-  return at > 0 ? at * 1000 : Date.now()
-}
-
-const ACTIVITY: Record<
-  string,
-  (event: RtmEvent) => string | string[] | undefined
-> = {
-  // an away also arrives in bulk on subscribe, so only active means "now"
-  presence_change: (e) =>
-    e.presence === 'active'
-      ? Array.isArray(e.users)
-        ? (e.users as string[])
-        : e.user
-      : undefined,
-  user_typing: (e) => e.user,
-  // a reply carries the parent's own edited.user, from whenever that edit was
-  message: (e) =>
-    human(e, e.user) ??
-    (e.subtype === 'message_changed'
-      ? human(e.message, e.message?.edited?.user)
-      : undefined),
-  reaction_added: (e) => e.user,
-  reaction_removed: (e) => e.user,
-  pin_added: (e) => e.user,
-  pin_removed: (e) => e.user,
-  file_shared: (e) => (typeof e.user_id === 'string' ? e.user_id : undefined),
-  sh_room_join: (e) => e.user,
-}
-
-function ago(at: number): string {
-  const elapsed = Date.now() - at
-  const format = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
-  for (const [unit, size] of [
-    ['day', 24 * 60 * 60 * 1000],
-    ['hour', 60 * 60 * 1000],
-    ['minute', 60 * 1000],
-  ] as const)
-    if (elapsed >= size)
-      return format.format(-Math.max(1, Math.floor(elapsed / size)), unit)
-  return 'just now'
-}
-
 export default class LastSeen extends TautPlugin<typeof LastSeen> {
   static readonly id = 'LastSeen'
   static readonly pluginName = 'Last Seen'
@@ -255,4 +207,52 @@ export default class LastSeen extends TautPlugin<typeof LastSeen> {
       return at || null
     })
   }
+}
+
+/** the id, unless a bot posted under it with an xoxp */
+const human = (msg: RtmEvent | undefined, id: unknown) =>
+  msg && typeof id === 'string' && !msg.bot_id && !msg.app_id ? id : undefined
+
+const when = (event: RtmEvent): number => {
+  const at = Number.parseFloat(event.event_ts ?? event.ts ?? '')
+  return at > 0 ? at * 1000 : Date.now()
+}
+
+const ACTIVITY: Record<
+  string,
+  (event: RtmEvent) => string | string[] | undefined
+> = {
+  // an away also arrives in bulk on subscribe, so only active means "now"
+  presence_change: (e) =>
+    e.presence === 'active'
+      ? Array.isArray(e.users)
+        ? (e.users as string[])
+        : e.user
+      : undefined,
+  user_typing: (e) => e.user,
+  // a reply carries the parent's own edited.user, from whenever that edit was
+  message: (e) =>
+    human(e, e.user) ??
+    (e.subtype === 'message_changed'
+      ? human(e.message, e.message?.edited?.user)
+      : undefined),
+  reaction_added: (e) => e.user,
+  reaction_removed: (e) => e.user,
+  pin_added: (e) => e.user,
+  pin_removed: (e) => e.user,
+  file_shared: (e) => (typeof e.user_id === 'string' ? e.user_id : undefined),
+  sh_room_join: (e) => e.user,
+}
+
+function ago(at: number): string {
+  const elapsed = Date.now() - at
+  const format = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+  for (const [unit, size] of [
+    ['day', 24 * 60 * 60 * 1000],
+    ['hour', 60 * 60 * 1000],
+    ['minute', 60 * 1000],
+  ] as const)
+    if (elapsed >= size)
+      return format.format(-Math.max(1, Math.floor(elapsed / size)), unit)
+  return 'just now'
 }

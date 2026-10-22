@@ -12,6 +12,7 @@ A plugin is one file in `plugins/` whose default export is a class extending `Ta
 - Set a `category`, and `hackClubOnly` if the plugin only makes sense in the Hack Club Slack.
 - When a released option changes shape, add `static migrateConfig(saved)` to rewrite the old keys in place. It runs on every boot, so it must be idempotent.
 - Anything you inject by name (class names, keys, DOM ids, container names) is `taut-<thing>`, in BEM style, spelled out in words.
+- Put the class right after the imports, the tuning constants and config tables, and helper functions and long internal tables after it.
 
 ## Lifecycle
 

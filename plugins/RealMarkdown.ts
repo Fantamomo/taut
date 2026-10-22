@@ -2,6 +2,27 @@
 
 import { type InlineFormat, type MarkupSpan, TautPlugin } from '$taut'
 
+export default class RealMarkdown extends TautPlugin<typeof RealMarkdown> {
+  static readonly id = 'RealMarkdown'
+  static readonly pluginName = 'Real Markdown'
+  static readonly description =
+    "Write messages in standard Markdown instead of Slack's markup"
+  static readonly authors = ['jeremy', 'rowan'] as const
+  static readonly category = 'messageBox'
+  static readonly defaultConfig = {
+    enabled: false,
+  }
+
+  start() {
+    this.api.composer.patchInlineMarkup({
+      parse: parseMarkdown,
+      serialize: serializeMarkdown,
+      escape: escapeMarkdown,
+    })
+    this.log('Started')
+  }
+}
+
 type Emphasis = { marker: string; format: InlineFormat }
 
 // longest first, so `**` is tried before `*`
@@ -185,26 +206,5 @@ function serializeMarkdown(format: InlineFormat): [string, string] {
       return ['~~', '~~']
     case 'code':
       return ['`', '`']
-  }
-}
-
-export default class RealMarkdown extends TautPlugin<typeof RealMarkdown> {
-  static readonly id = 'RealMarkdown'
-  static readonly pluginName = 'Real Markdown'
-  static readonly description =
-    "Write messages in standard Markdown instead of Slack's markup"
-  static readonly authors = ['jeremy', 'rowan'] as const
-  static readonly category = 'messageBox'
-  static readonly defaultConfig = {
-    enabled: false,
-  }
-
-  start() {
-    this.api.composer.patchInlineMarkup({
-      parse: parseMarkdown,
-      serialize: serializeMarkdown,
-      escape: escapeMarkdown,
-    })
-    this.log('Started')
   }
 }

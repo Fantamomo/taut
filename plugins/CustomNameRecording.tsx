@@ -8,82 +8,6 @@ type AudioButtonProps = {
   onFileUploadEnd?: () => void
 }
 
-/** the audio file they chose, or null if they closed the picker */
-function pickAudio(): Promise<File | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement('input')
-    Object.assign(input, { type: 'file', accept: 'audio/*' })
-    input.style.display = 'none'
-    const done = (file: File | null) => {
-      resolve(file)
-      input.remove()
-    }
-    input.addEventListener('change', () => done(input.files?.[0] ?? null), {
-      once: true,
-    })
-    input.addEventListener('cancel', () => done(null), { once: true })
-    document.body.appendChild(input)
-    input.click()
-  })
-}
-
-/** whether the bytes start with an ID3 tag or an MPEG audio frame header */
-function isMp3(bytes: ArrayBuffer): boolean {
-  const [a = 0, b = 0, c = 0] = new Uint8Array(bytes.slice(0, 3))
-  if (a === 0x49 && b === 0x44 && c === 0x33) return true
-  return a === 0xff && (b & 0xe0) === 0xe0 && (b & 0x06) !== 0
-}
-
-/** plays the audio into a MediaRecorder */
-async function rerecord(audio: AudioBuffer): Promise<Blob> {
-  const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((t) =>
-    MediaRecorder.isTypeSupported(t)
-  )
-  if (!type) throw new Error('This browser cannot convert audio')
-  const context = new AudioContext({ sampleRate: audio.sampleRate })
-  try {
-    await context.resume()
-    const source = context.createBufferSource()
-    source.buffer = audio
-    const destination = context.createMediaStreamDestination()
-    source.connect(destination)
-    const recorder = new MediaRecorder(destination.stream, {
-      mimeType: type,
-      audioBitsPerSecond: 128_000,
-    })
-    const chunks: Blob[] = []
-    recorder.addEventListener('dataavailable', (e) => chunks.push(e.data))
-    const stopped = new Promise((resolve) =>
-      recorder.addEventListener('stop', resolve, { once: true })
-    )
-    source.addEventListener('ended', () => recorder.stop(), { once: true })
-    // the recorder drops about the first 100ms played before it's running
-    recorder.addEventListener(
-      'start',
-      () => source.start(context.currentTime + 0.05),
-      { once: true }
-    )
-    recorder.start()
-    await stopped
-    return new Blob(chunks, { type })
-  } finally {
-    context.close()
-  }
-}
-
-/** the waveform Slack draws, one peak per bar, each 0-100 */
-function peaks(channel: Float32Array, count: number): number[] {
-  const width = Math.max(1, Math.floor(channel.length / count))
-  return Array.from({ length: count }, (_, bar) => {
-    const start = bar * width
-    const end = Math.min(channel.length, start + width)
-    let peak = 0
-    for (let i = start; i < end; i++)
-      peak = Math.max(peak, Math.abs(channel[i] ?? 0))
-    return Math.round(peak * 100)
-  })
-}
-
 export default class CustomNameRecording extends TautPlugin<
   typeof CustomNameRecording
 > {
@@ -200,4 +124,80 @@ export default class CustomNameRecording extends TautPlugin<
       audio_wave_samples: peaks(audio.getChannelData(0), bars),
     })
   }
+}
+
+/** the audio file they chose, or null if they closed the picker */
+function pickAudio(): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    Object.assign(input, { type: 'file', accept: 'audio/*' })
+    input.style.display = 'none'
+    const done = (file: File | null) => {
+      resolve(file)
+      input.remove()
+    }
+    input.addEventListener('change', () => done(input.files?.[0] ?? null), {
+      once: true,
+    })
+    input.addEventListener('cancel', () => done(null), { once: true })
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
+/** whether the bytes start with an ID3 tag or an MPEG audio frame header */
+function isMp3(bytes: ArrayBuffer): boolean {
+  const [a = 0, b = 0, c = 0] = new Uint8Array(bytes.slice(0, 3))
+  if (a === 0x49 && b === 0x44 && c === 0x33) return true
+  return a === 0xff && (b & 0xe0) === 0xe0 && (b & 0x06) !== 0
+}
+
+/** plays the audio into a MediaRecorder */
+async function rerecord(audio: AudioBuffer): Promise<Blob> {
+  const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((t) =>
+    MediaRecorder.isTypeSupported(t)
+  )
+  if (!type) throw new Error('This browser cannot convert audio')
+  const context = new AudioContext({ sampleRate: audio.sampleRate })
+  try {
+    await context.resume()
+    const source = context.createBufferSource()
+    source.buffer = audio
+    const destination = context.createMediaStreamDestination()
+    source.connect(destination)
+    const recorder = new MediaRecorder(destination.stream, {
+      mimeType: type,
+      audioBitsPerSecond: 128_000,
+    })
+    const chunks: Blob[] = []
+    recorder.addEventListener('dataavailable', (e) => chunks.push(e.data))
+    const stopped = new Promise((resolve) =>
+      recorder.addEventListener('stop', resolve, { once: true })
+    )
+    source.addEventListener('ended', () => recorder.stop(), { once: true })
+    // the recorder drops about the first 100ms played before it's running
+    recorder.addEventListener(
+      'start',
+      () => source.start(context.currentTime + 0.05),
+      { once: true }
+    )
+    recorder.start()
+    await stopped
+    return new Blob(chunks, { type })
+  } finally {
+    context.close()
+  }
+}
+
+/** the waveform Slack draws, one peak per bar, each 0-100 */
+function peaks(channel: Float32Array, count: number): number[] {
+  const width = Math.max(1, Math.floor(channel.length / count))
+  return Array.from({ length: count }, (_, bar) => {
+    const start = bar * width
+    const end = Math.min(channel.length, start + width)
+    let peak = 0
+    for (let i = start; i < end; i++)
+      peak = Math.max(peak, Math.abs(channel[i] ?? 0))
+    return Math.round(peak * 100)
+  })
 }
