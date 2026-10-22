@@ -15,6 +15,26 @@ const OFFICIAL_URL = 'https://taut.jer.app/taut.js'
 const DEFAULT_URL = __TAUT_EMBEDDED__ ? '<embedded>' : OFFICIAL_URL
 const OPTIONS_URL = 'https://taut.jer.app/options'
 
+async function readPage(response: Response) {
+  const type = response.headers.get('content-type') ?? ''
+  const sameOrigin = new URL(response.url).origin === location.origin
+  if (!response.ok || !sameOrigin || !type.startsWith('text/html'))
+    throw new Error(
+      `Unexpected response: ${response.status} ${response.url} ${type}`
+    )
+  return response.text()
+}
+
+function reloadWithoutTaut(error: unknown) {
+  console.error('[Taut] Failed to rewrite the page:', error)
+  try {
+    sessionStorage.setItem('taut_rewrite_failed', '1')
+  } catch {
+    return
+  }
+  location.reload()
+}
+
 unsafeWindow.tautPrefs = {
   getUrl: () => Promise.resolve(GM_getValue('tautUrl', DEFAULT_URL)),
   setUrl: (url) => {
@@ -31,23 +51,32 @@ if (location.href.startsWith(OPTIONS_URL)) {
   GM_registerMenuCommand('Taut Options', () =>
     GM_openInTab(OPTIONS_URL, { active: true })
   )
+  GM_registerMenuCommand('Reload in Safe Mode', () => {
+    sessionStorage.setItem('taut_safe_mode_once', '1')
+    location.reload()
+  })
 
   unsafeWindow.TautBridge = userscriptBridge
 
-  document.open()
-  document.write('<!DOCTYPE html>')
-  document.close()
   ;(async () => {
+    let rewriteFailed = false
+    try {
+      rewriteFailed = sessionStorage.getItem('taut_rewrite_failed') !== null
+      sessionStorage.removeItem('taut_rewrite_failed')
+    } catch {}
+    if (rewriteFailed) {
+      console.warn('[Taut] Loading Slack without Taut after a failed rewrite')
+      return
+    }
+
+    document.open()
+    document.write('<!DOCTYPE html>')
+    document.close()
+
     const tautUrl = GM_getValue('tautUrl', DEFAULT_URL)
     const useEmbedded = __TAUT_EMBEDDED__ && tautUrl === '<embedded>'
 
-    let html: string
-    try {
-      html = await fetch(location.href).then((r) => r.text())
-    } catch (e) {
-      console.error('[Taut] Failed to fetch page HTML:', e)
-      return
-    }
+    const html = await fetch(location.href).then(readPage)
 
     const doc = new DOMParser().parseFromString(html, 'text/html')
     doc.querySelector('meta[http-equiv="Content-Security-Policy"]')?.remove()
@@ -89,5 +118,5 @@ if (location.href.startsWith(OPTIONS_URL)) {
     console.log(
       '[Taut] Document reconstructed with CSP removed and taut.js injected'
     )
-  })()
+  })().catch(reloadWithoutTaut)
 }

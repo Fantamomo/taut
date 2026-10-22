@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events'
 import { readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { app, ipcMain, Menu, MenuItem, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, MenuItem, shell } from 'electron'
 import { redirectNativeModules } from './nativeModules.js'
 import { configDir } from './paths.js'
 import { checkForUpdates } from './updates.js'
@@ -123,6 +123,13 @@ const tautMenuTemplate: Electron.MenuItemConstructorOptions = {
     { role: 'toggleDevTools', accelerator: 'CmdOrCtrl+Alt+I' },
     { role: 'reload' },
     { role: 'forceReload' },
+    {
+      label: 'Reload in Safe Mode',
+      click: () =>
+        BrowserWindow.getFocusedWindow()?.webContents.executeJavaScript(
+          `sessionStorage.setItem('taut_safe_mode_once', '1'); location.reload()`
+        ),
+    },
     { type: 'separator' },
     { role: 'quit' },
   ],

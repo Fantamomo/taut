@@ -669,7 +669,7 @@ export class PluginManager {
     })
   }
 
-  /** refreshes `pluginDataStore` after each successful mutation */
+  /** updates `pluginDataStore` after each successful mutation */
   private watchedBlobStore(id: string, kind: DataKind, blob: BlobStore) {
     const refresh = () => this.refreshDataFlag(id, kind)
     const watched: BlobStore = {
@@ -677,7 +677,7 @@ export class PluginManager {
       read: (key) => blob.read(key),
       write: async (key, value) => {
         const ok = await blob.write(key, value)
-        if (ok) refresh()
+        if (ok) this.setPluginDataFlag(id, kind, true)
         return ok
       },
       delete: async (key) => {

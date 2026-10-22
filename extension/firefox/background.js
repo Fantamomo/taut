@@ -19,7 +19,7 @@ import { serializeResponse } from '../shared/fetchBody.js'
         buffer += decoder.decode(event.data, { stream: true })
       }
 
-      filter.onstop = async () => {
+      const rewrite = async () => {
         buffer += decoder.decode()
 
         const { tautUrl } = await browser.storage.local.get({
@@ -69,6 +69,13 @@ import { serializeResponse } from '../shared/fetchBody.js'
         )
         filter.close()
       }
+
+      filter.onstop = () =>
+        rewrite().catch((e) => {
+          console.error('[Taut] Failed to rewrite the page:', e)
+          filter.write(encoder.encode(buffer))
+          filter.close()
+        })
     },
     { urls: ['https://app.slack.com/client/*'], types: ['main_frame'] },
     ['blocking']
@@ -84,6 +91,9 @@ import { serializeResponse } from '../shared/fetchBody.js'
   const storageGet = (key) => browser.storage.local.get(key).then((r) => r[key])
   /** @param {string} key @param {string} value @returns {Promise<void>} */
   const storageSet = (key, value) => browser.storage.local.set({ [key]: value })
+  /** @param {string} prefix @returns {Promise<string[]>} */
+  const storageKeys = async (prefix) =>
+    (await browser.storage.local.getKeys()).filter((k) => k.startsWith(prefix))
 
   // let fetchWithCookie send `X-Taut-Cookie`, move it to `Cookie`
   browser.webRequest.onBeforeSendHeaders.addListener(
@@ -147,12 +157,10 @@ import { serializeResponse } from '../shared/fetchBody.js'
       await browser.storage.local.remove(`taut-secret:${key}`)
       return true
     },
-    listUserPlugins: async () => {
-      const all = await browser.storage.local.get(null)
-      return Object.keys(all)
-        .filter((key) => key.startsWith('taut-user-plugin:'))
-        .map((key) => key.slice('taut-user-plugin:'.length))
-    },
+    listUserPlugins: async () =>
+      (await storageKeys('taut-user-plugin:')).map((key) =>
+        key.slice('taut-user-plugin:'.length)
+      ),
     readUserPlugin: async (id) =>
       (await storageGet(`taut-user-plugin:${id}`)) ?? null,
     writeUserPlugin: async (id, code) => {
@@ -165,10 +173,9 @@ import { serializeResponse } from '../shared/fetchBody.js'
     },
     blobList: async (namespace) => {
       const prefix = blobPrefix(namespace)
-      const all = await browser.storage.local.get(null)
-      return Object.keys(all)
-        .filter((k) => k.startsWith(prefix))
-        .map((k) => decodeURIComponent(k.slice(prefix.length)))
+      return (await storageKeys(prefix)).map((k) =>
+        decodeURIComponent(k.slice(prefix.length))
+      )
     },
     blobRead: async (namespace, key) =>
       (await storageGet(blobPrefix(namespace) + blobKey(key))) ?? null,
@@ -181,10 +188,9 @@ import { serializeResponse } from '../shared/fetchBody.js'
       return true
     },
     blobClear: async (namespace) => {
-      const prefix = blobPrefix(namespace)
-      const all = await browser.storage.local.get(null)
-      const keys = Object.keys(all).filter((k) => k.startsWith(prefix))
-      await browser.storage.local.remove(keys)
+      await browser.storage.local.remove(
+        await storageKeys(blobPrefix(namespace))
+      )
       return true
     },
     cookieGet: (details) =>

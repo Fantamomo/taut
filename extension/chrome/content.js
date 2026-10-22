@@ -91,7 +91,39 @@ async function restoreFromMirror() {
   })
 }
 
+/** @param {Response} response */
+async function readPage(response) {
+  const type = response.headers.get('content-type') ?? ''
+  const sameOrigin = new URL(response.url).origin === location.origin
+  if (!response.ok || !sameOrigin || !type.startsWith('text/html'))
+    throw new Error(
+      `Unexpected response: ${response.status} ${response.url} ${type}`
+    )
+  return response.text()
+}
+
+/** @param {unknown} error */
+function reloadWithoutTaut(error) {
+  console.error('[Taut] Failed to rewrite the page:', error)
+  try {
+    sessionStorage.setItem('taut_rewrite_failed', '1')
+  } catch {
+    return
+  }
+  location.reload()
+}
+
 ;(async () => {
+  let rewriteFailed = false
+  try {
+    rewriteFailed = sessionStorage.getItem('taut_rewrite_failed') !== null
+    sessionStorage.removeItem('taut_rewrite_failed')
+  } catch {}
+  if (rewriteFailed) {
+    console.warn('[Taut] Loading Slack without Taut after a failed rewrite')
+    return
+  }
+
   const DEFAULT_URL = __TAUT_EMBEDDED__
     ? chrome.runtime.getURL('taut.js')
     : 'https://taut.jer.app/taut.js'
@@ -105,7 +137,7 @@ async function restoreFromMirror() {
     restoreFromMirror()
       .catch((e) => console.warn('[Taut] Storage restore failed:', e))
       .then(() => chrome.storage.local.get({ tautUrl: DEFAULT_URL })),
-    fetch(location.href).then((r) => r.text()),
+    fetch(location.href).then(readPage),
   ])
   const doc = new DOMParser().parseFromString(html, 'text/html')
   doc.querySelector('meta[http-equiv="Content-Security-Policy"]')?.remove()
@@ -195,6 +227,7 @@ async function restoreFromMirror() {
         })
         continue
       }
+      if (key !== 'taut-config' && key !== 'taut-user-css') continue
       window.postMessage({
         __taut: true,
         kind: 'event',
@@ -203,4 +236,4 @@ async function restoreFromMirror() {
       })
     }
   })
-})()
+})().catch(reloadWithoutTaut)

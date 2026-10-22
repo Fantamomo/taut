@@ -11,7 +11,6 @@ const { contextBridge, ipcRenderer } = require('electron')
 const origPreloadPromise = ipcRenderer.invoke(
   'taut:get-original-preload'
 ) as Promise<string | null>
-const origHtmlPromise = fetch(location.href).then((r) => r.text())
 const tautUrlPromise = ipcRenderer.invoke('taut:get-app-url') as Promise<string>
 const pathsPromise = ipcRenderer.invoke('taut:get-paths')
 const installPromise = (
@@ -20,7 +19,38 @@ const installPromise = (
 
 const isClientPage = /\/client(\/|$)/.test(location.pathname)
 
-if (isClientPage) {
+let rewriteFailed = false
+try {
+  rewriteFailed = sessionStorage.getItem('taut_rewrite_failed') !== null
+  sessionStorage.removeItem('taut_rewrite_failed')
+} catch {}
+if (rewriteFailed)
+  console.warn('[Taut] Loading Slack without Taut after a failed rewrite')
+const rewriting = isClientPage && !rewriteFailed
+
+const origHtmlPromise = rewriting ? fetch(location.href).then(readPage) : null
+
+async function readPage(response: Response) {
+  const type = response.headers.get('content-type') ?? ''
+  const sameOrigin = new URL(response.url).origin === location.origin
+  if (!response.ok || !sameOrigin || !type.startsWith('text/html'))
+    throw new Error(
+      `Unexpected response: ${response.status} ${response.url} ${type}`
+    )
+  return response.text()
+}
+
+function reloadWithoutTaut(error: unknown) {
+  console.error('[Taut] Failed to rewrite the page:', error)
+  try {
+    sessionStorage.setItem('taut_rewrite_failed', '1')
+  } catch {
+    return
+  }
+  location.reload()
+}
+
+if (rewriting) {
   document.open()
   document.write('<!DOCTYPE html>')
   document.close()
@@ -43,14 +73,9 @@ if (isClientPage) {
     console.log('[Taut] Skipping patch for non-client page:', location.pathname)
     return
   }
+  if (!origHtmlPromise) return
 
-  let html: string
-  try {
-    html = await origHtmlPromise
-  } catch (e) {
-    console.error('[Taut] Failed to fetch page HTML:', e)
-    return
-  }
+  const html = await origHtmlPromise
 
   let tautUrl: string
   try {
@@ -217,4 +242,4 @@ if (isClientPage) {
   console.log(
     '[Taut] Document reconstructed with CSP removed and taut.js injected'
   )
-})()
+})().catch(reloadWithoutTaut)

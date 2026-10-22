@@ -103,6 +103,7 @@ http
     res.writeHead(200, {
       'content-type': 'application/javascript; charset=utf-8',
       'cache-control': 'no-store',
+      'x-taut-checkout': ROOT,
     })
     res.end(
       buildError === null

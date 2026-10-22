@@ -14,6 +14,9 @@ const storageGet = (key) =>
     .then((r) => /** @type {string | undefined} */ (r[key]))
 /** @param {string} key @param {string} value @returns {Promise<void>} */
 const storageSet = (key, value) => chrome.storage.local.set({ [key]: value })
+/** @param {string} prefix @returns {Promise<string[]>} */
+const storageKeys = async (prefix) =>
+  (await chrome.storage.local.getKeys()).filter((k) => k.startsWith(prefix))
 
 let nextRuleId = Math.floor(Math.random() * 1_000_000_000) + 1
 
@@ -85,12 +88,10 @@ const methods = {
     await chrome.storage.local.remove(`taut-secret:${key}`)
     return true
   },
-  listUserPlugins: async () => {
-    const all = await chrome.storage.local.get(null)
-    return Object.keys(all)
-      .filter((key) => key.startsWith('taut-user-plugin:'))
-      .map((key) => key.slice('taut-user-plugin:'.length))
-  },
+  listUserPlugins: async () =>
+    (await storageKeys('taut-user-plugin:')).map((key) =>
+      key.slice('taut-user-plugin:'.length)
+    ),
   readUserPlugin: async (id) =>
     (await storageGet(`taut-user-plugin:${id}`)) ?? null,
   writeUserPlugin: async (id, code) => {
@@ -103,10 +104,9 @@ const methods = {
   },
   blobList: async (namespace) => {
     const prefix = blobPrefix(namespace)
-    const all = await chrome.storage.local.get(null)
-    return Object.keys(all)
-      .filter((k) => k.startsWith(prefix))
-      .map((k) => decodeURIComponent(k.slice(prefix.length)))
+    return (await storageKeys(prefix)).map((k) =>
+      decodeURIComponent(k.slice(prefix.length))
+    )
   },
   blobRead: async (namespace, key) =>
     (await storageGet(blobPrefix(namespace) + blobKey(key))) ?? null,
@@ -119,10 +119,7 @@ const methods = {
     return true
   },
   blobClear: async (namespace) => {
-    const prefix = blobPrefix(namespace)
-    const all = await chrome.storage.local.get(null)
-    const keys = Object.keys(all).filter((k) => k.startsWith(prefix))
-    await chrome.storage.local.remove(keys)
+    await chrome.storage.local.remove(await storageKeys(blobPrefix(namespace)))
     return true
   },
   cookieGet: (details) =>

@@ -38,6 +38,8 @@ browser.storage.onChanged.addListener((changes, area) => {
       })
       continue
     }
+    // bridge-setup.js reads only these, so plugin writes stay out of the page
+    if (key !== 'taut-config' && key !== 'taut-user-css') continue
     window.postMessage({
       __taut: true,
       kind: 'event',

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Taut",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "minimum_chrome_version": "140",
   "description": "Client mod for Slack",
   "author": "Jeremy Woolley",
@@ -15,7 +15,12 @@
   },
   "host_permissions": ["https://*.slack.com/*"],
   "optional_host_permissions": ["*://*/*"],
-  "permissions": ["storage", "cookies", "declarativeNetRequestWithHostAccess"],
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "cookies",
+    "declarativeNetRequestWithHostAccess"
+  ],
   "options_ui": {
     "page": "options.html",
     "open_in_tab": false
