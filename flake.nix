@@ -10,24 +10,24 @@
       # begin releases (written by scripts/flake.ts)
       releases = {
         x86_64-linux = {
-          version = "3.1.2";
+          version = "3.2.0";
           file = "taut-linux.AppImage";
-          hash = "sha256-ka4WRgDpajWSIjaJT9zI3l9tnrOAzesYqSZAP1RFlpE=";
+          hash = "sha256-+ZuENrX4qkEjWBjFO6OCNGiweDAQ4uNQuiHxAM6V15c=";
         };
         aarch64-linux = {
-          version = "3.1.2";
+          version = "3.2.0";
           file = "taut-linux-arm.AppImage";
-          hash = "sha256-O5bROHgMacQYb3AIEUTmd0E47ED/G+3tIobf60p/RIA=";
+          hash = "sha256-dBJ5njTfG4EMxWkWyb5GasDndYES5BaMDuempfnpof0=";
         };
         x86_64-darwin = {
-          version = "3.1.2";
+          version = "3.2.0";
           file = "taut-mac-x64.dmg";
-          hash = "sha256-PQ1CPHUJrRX1haPOt/PlKER/23mBmoujqtmOINcdwM0=";
+          hash = "sha256-Mt9puMHQwZiPAQp8uF7+A/CLcmh+w+W0HYEqj7b+6ps=";
         };
         aarch64-darwin = {
-          version = "3.1.2";
+          version = "3.2.0";
           file = "taut-mac.dmg";
-          hash = "sha256-ozt+tJ1Az3lDNR4svYvZae9w9hjA0vU4l86/nJDMvjo=";
+          hash = "sha256-B20lkcWERntmZqWAzxO+Ie98zInUwb3TU0+Ma5vXb9g=";
         };
       };
       # end releases
