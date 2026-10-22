@@ -9,6 +9,15 @@ Each release is a `## x.y.z` heading, and each change is one bullet:
 - `- **Plugin Name**: Fixed what was broken` for a plugin fix
 - `- What changed` for a change to Taut itself
 
+## 3.2.0
+
+- **Quick Join** (new plugin): Join a channel from its right-click menu
+- **Experiments**: Powerful filters for experiments and more data about them, to help find interesting ones
+- **Slim Message Box**: Allow disabling the broadcast button, fixed /gif with the emoji button hidden
+- **IDV Status**: People who just verified show as verified sooner
+- **Haiku Warning**: Stores a much smaller dictionary
+- Fixed settings changes being lost with multiple Slack tabs open
+
 ## 3.1.4
 
 - **Haiku Warning**: Choose a banner, a pop-up, or both, the icon is the Orpheus emoji, and the banner no longer flashes while typing
