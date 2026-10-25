@@ -13,15 +13,24 @@ import { bindCache } from './api/cache'
 import { setStyle } from './api/css'
 import { elementsAPIPromise } from './api/elements'
 import { menuAPIPromise } from './api/menu'
-import { dialogHelpersFor, modalAPIPromise } from './api/modal'
-import { announceStorageChange, ScopedStorage } from './api/pluginStorage'
+import {
+  dialogHelpersFor,
+  type ModalHandle,
+  modalAPIPromise,
+  type OpenModalOptions,
+} from './api/modal'
+import {
+  announceStorageChange,
+  ScopedStorage,
+  secretBlobStore,
+} from './api/pluginStorage'
 import { preferences } from './api/preferences'
 import { deferResizeWork } from './api/resize'
 import { bindSharedStore, SharedStore, sharedFrom } from './api/sharedStore'
 import { userAPI } from './api/userAPI'
 import type { NormalizedBridge } from './bridgeCompat'
 import type { ConfigStore } from './configStore'
-import { deepEqual } from './helpers'
+import { deepEqual, within } from './helpers'
 import {
   defaultEntries,
   isSecret,
@@ -39,6 +48,7 @@ import {
 } from './slack/composer'
 import { ForcedExperiments } from './slack/experiments'
 import { filesPromise } from './slack/files'
+import { huddlesPromise } from './slack/huddles'
 import { membersPromise } from './slack/members'
 import { onMessageSendBlocks } from './slack/messageSend'
 import { messagesPromise } from './slack/messages'
@@ -54,6 +64,7 @@ import {
 } from './slack/react'
 import { reduxPromise } from './slack/redux'
 import { rtmPromise } from './slack/rtm'
+import { threads } from './slack/threads'
 import {
   byMeta,
   byName,
@@ -115,6 +126,7 @@ async function makeBaseTautAPI(bridge: NormalizedBridge) {
     byName,
     byMeta,
     waitForExport,
+    within,
     waitForComponent,
     waitForRenderedComponent,
     lazyComponent,
@@ -132,8 +144,10 @@ async function makeBaseTautAPI(bridge: NormalizedBridge) {
     channels: await channelsPromise,
     blocks: await blocksAPIPromise,
     files: await filesPromise,
+    huddles: await huddlesPromise,
     profile,
     rtm: await rtmPromise,
+    threads,
     workspace,
     fetch: bridge.fetch.bind(bridge),
     userAPI,
@@ -231,19 +245,55 @@ function createPluginScope(): PluginScope {
   }
 }
 
+/** blob stores as one, each key prefixed with its store's name */
+function joinBlobStores(parts: Record<string, BlobStore>): BlobStore {
+  const route = (joined: string): [BlobStore, string] => {
+    const at = joined.indexOf(':')
+    const blob = parts[joined.slice(0, at)]
+    if (at < 0 || !blob) throw new Error(`[Taut] No blob store for ${joined}`)
+    return [blob, joined.slice(at + 1)]
+  }
+  const each = (fn: (blob: BlobStore) => Promise<boolean>) =>
+    Promise.all(Object.values(parts).map(fn)).then((oks) => oks.every(Boolean))
+  return {
+    list: async () =>
+      (
+        await Promise.all(
+          Object.entries(parts).map(async ([name, blob]) =>
+            (await blob.list()).map((key) => `${name}:${key}`)
+          )
+        )
+      ).flat(),
+    read: (joined) => {
+      const [blob, key] = route(joined)
+      return blob.read(key)
+    },
+    write: (joined, value) => {
+      const [blob, key] = route(joined)
+      return blob.write(key, value)
+    },
+    delete: (joined) => {
+      const [blob, key] = route(joined)
+      return blob.delete(key)
+    },
+    clear: () => each((blob) => blob.clear()),
+  }
+}
+
 /** a plugin's `this.api`, registrations undone when it stops and storage scoped to its id */
 function createScopedAPI(
   base: BaseTautAPI,
   id: string,
   scope: PluginScope,
   storage: { blob: BlobStore; namespace: string },
+  secrets: { blob: BlobStore; namespace: string },
   cacheBlob: BlobStore
 ) {
   const tracked = <F extends (...args: any[]) => () => void>(fn: F): F =>
     ((...args: Parameters<F>) => scope.track(fn(...args))) as F
   const experiments = new ForcedExperiments()
   scope.track(experiments.dispose)
-  const openModal: typeof base.modal.openModal = (options) => {
+  const openModal = (options: OpenModalOptions): ModalHandle | null => {
     if (scope.signal.aborted) return null
     let open = true
     const closing =
@@ -258,7 +308,6 @@ function createScopedAPI(
       onCancel: closing(options.onCancel),
       onClose: closing(options.onClose),
     })
-    if (!handle) return handle
     // closing it when the plugin stops counts as a dismissal
     const dismiss = scope.track(() => {
       handle.close()
@@ -269,6 +318,11 @@ function createScopedAPI(
   return {
     ...base,
     signal: scope.signal,
+    within: <T>(
+      work: Parameters<typeof base.within<T>>[0],
+      ms: number,
+      what?: string
+    ) => base.within(work, ms, what && `${id}: ${what}`, scope.signal),
     patchComponent: tracked(base.patchComponent) as typeof base.patchComponent,
     redux: {
       ...base.redux,
@@ -278,6 +332,11 @@ function createScopedAPI(
     },
     experiments,
     rtm: { ...base.rtm, on: tracked(base.rtm.on) },
+    huddles: {
+      ...base.huddles,
+      onPeerMessage: tracked(base.huddles.onPeerMessage),
+      onActiveHuddle: tracked(base.huddles.onActiveHuddle),
+    },
     workspace: {
       ...base.workspace,
       onChange: tracked(base.workspace.onChange),
@@ -314,6 +373,8 @@ function createScopedAPI(
       return { ...handle, subscribe: tracked(handle.subscribe) }
     },
     storage: new ScopedStorage(storage.blob, storage.namespace, scope.signal),
+    /** like `storage`, kept in secret storage */
+    secrets: new ScopedStorage(secrets.blob, secrets.namespace, scope.signal),
     Cache: bindCache(cacheBlob),
     SharedStore: bindSharedStore(id, scope.signal),
   }
@@ -430,16 +491,35 @@ export class PluginManager {
   private cacheNamespace(id: string): string {
     return `plugin:${id}:cache`
   }
+  private secretsNamespace(id: string): string {
+    return `plugin:${id}:secrets`
+  }
+  /** the bridge secret holding `this.api.secrets` (`opt.secret` is `plugin:${id}:${secret}` so this won't conflict) */
+  private secretsBridgeKey(id: string): string {
+    return `plugin:${id}`
+  }
+  /** `this.api.secrets` */
+  private secretsBlob(id: string): BlobStore {
+    return secretBlobStore(this.bridge, this.secretsBridgeKey(id))
+  }
+  /** `this.api.storage` and `this.api.secrets` together */
+  private storageBlob(id: string): BlobStore {
+    return joinBlobStores({
+      storage: this.bridge.blobStore(this.storageNamespace(id)),
+      secrets: this.secretsBlob(id),
+    })
+  }
   /** the bridge secret holding one of a plugin's `opt.secret` values */
   private secretName(id: string, key: string): string {
     return `plugin:${id}:${key}`
   }
 
-  /** every loaded plugin's `opt.secret` bridge secrets, set or not */
+  /** every loaded plugin's bridge secrets (`this.api.secrets` and `opt.secret`), set or not */
   pluginSecretNames(): string[] {
     const names: string[] = []
     for (const [id, plugin] of this.plugins) {
       if (!plugin.PluginClass) continue
+      names.push(this.secretsBridgeKey(id))
       for (const entry of defaultEntries(plugin.PluginClass.defaultConfig)) {
         if (isSecret(entry)) names.push(this.secretName(id, entry.key))
       }
@@ -508,20 +588,14 @@ export class PluginManager {
     })
   }
 
-  /** older loaders have no deleteSecret, so the values are blanked there */
   private async clearSecrets(
     id: string,
     defaults: DefaultConfig
   ): Promise<void> {
-    const { deleteSecret } = this.bridge
     for (const entry of defaultEntries(defaults)) {
       if (!isSecret(entry)) continue
       const name = this.secretName(id, entry.key)
-      await safely(
-        () =>
-          deleteSecret ? deleteSecret(name) : this.bridge.writeSecret(name, ''),
-        false
-      )
+      await safely(() => this.bridge.deleteSecret(name), false)
     }
   }
 
@@ -560,7 +634,7 @@ export class PluginManager {
       .clear()
       .catch(() => false)
     const storageRestored = await this.restoreBlobStore(
-      this.bridge.blobStore(this.storageNamespace(id)),
+      this.storageBlob(id),
       snapshot
     )
 
@@ -597,12 +671,7 @@ export class PluginManager {
 
   /** refreshes `pluginDataStore` after each successful mutation */
   private watchedBlobStore(id: string, kind: DataKind, blob: BlobStore) {
-    const refresh = () => {
-      blob
-        .list()
-        .then((keys) => this.setPluginDataFlag(id, kind, keys.length > 0))
-        .catch(() => {})
-    }
+    const refresh = () => this.refreshDataFlag(id, kind)
     const watched: BlobStore = {
       list: () => blob.list(),
       read: (key) => blob.read(key),
@@ -618,7 +687,7 @@ export class PluginManager {
       },
       clear: async () => {
         const ok = await blob.clear()
-        if (ok) this.setPluginDataFlag(id, kind, false)
+        if (ok) refresh()
         return ok
       },
     }
@@ -641,6 +710,14 @@ export class PluginManager {
           scope.wrap(this.bridge.blobStore(this.storageNamespace(id)))
         ),
         namespace: this.storageNamespace(id),
+      },
+      {
+        blob: this.watchedBlobStore(
+          id,
+          'storage',
+          scope.wrap(this.secretsBlob(id))
+        ),
+        namespace: this.secretsNamespace(id),
       },
       this.watchedBlobStore(
         id,
@@ -698,15 +775,18 @@ export class PluginManager {
 
   /** pluginDataStore's initial value for `id`, from what's on disk */
   private refreshDataFlags(id: string) {
-    this.bridge
-      .blobStore(this.storageNamespace(id))
+    this.refreshDataFlag(id, 'storage')
+    this.refreshDataFlag(id, 'cache')
+  }
+
+  private refreshDataFlag(id: string, kind: DataKind) {
+    const blob =
+      kind === 'storage'
+        ? this.storageBlob(id)
+        : this.bridge.blobStore(this.cacheNamespace(id))
+    blob
       .list()
-      .then((keys) => this.setPluginDataFlag(id, 'storage', keys.length > 0))
-      .catch(() => {})
-    this.bridge
-      .blobStore(this.cacheNamespace(id))
-      .list()
-      .then((keys) => this.setPluginDataFlag(id, 'cache', keys.length > 0))
+      .then((keys) => this.setPluginDataFlag(id, kind, keys.length > 0))
       .catch(() => {})
   }
 
@@ -836,9 +916,7 @@ export class PluginManager {
     if (existing) await this.stopRuntime(id, existing)
     let storageSnapshot: Map<string, string>
     try {
-      storageSnapshot = await this.snapshotBlobStore(
-        this.bridge.blobStore(this.storageNamespace(id))
-      )
+      storageSnapshot = await this.snapshotBlobStore(this.storageBlob(id))
     } catch (err) {
       console.error(`[Taut] Failed to back up plugin ${id} data:`, err)
       if (existing) await this.reregister(id, existing)
@@ -998,9 +1076,7 @@ export class PluginManager {
       if (existing) await this.stopRuntime(id, existing)
       let storageSnapshot: Map<string, string>
       try {
-        storageSnapshot = await this.snapshotBlobStore(
-          this.bridge.blobStore(this.storageNamespace(id))
-        )
+        storageSnapshot = await this.snapshotBlobStore(this.storageBlob(id))
       } catch (err) {
         if (existing) await this.reregister(id, existing)
         return {
@@ -1051,7 +1127,7 @@ export class PluginManager {
         return { ok: false, error: 'User plugin not loaded' }
       }
       await this.stopRuntime(id, existing)
-      const storageBlob = this.bridge.blobStore(this.storageNamespace(id))
+      const storageBlob = this.storageBlob(id)
       let storageSnapshot: Map<string, string>
       try {
         storageSnapshot = await this.snapshotBlobStore(storageBlob)
@@ -1141,21 +1217,21 @@ export class PluginManager {
         kind === 'storage' ? ['storage', 'cache'] : ['cache']
       const results = await Promise.all(
         kindsToClear.map(async (k) => {
-          const namespace =
+          const blob =
             k === 'storage'
-              ? this.storageNamespace(id)
-              : this.cacheNamespace(id)
-          const ok = await this.bridge
-            .blobStore(namespace)
-            .clear()
-            .catch(() => false)
+              ? this.storageBlob(id)
+              : this.bridge.blobStore(this.cacheNamespace(id))
+          const ok = await blob.clear().catch(() => false)
           if (ok) this.setPluginDataFlag(id, k, false)
           return ok
         })
       )
 
       // other tabs keep running, so their stores go back to the fallback
-      if (kind === 'storage') announceStorageChange(this.storageNamespace(id))
+      if (kind === 'storage') {
+        announceStorageChange(this.storageNamespace(id))
+        announceStorageChange(this.secretsNamespace(id))
+      }
       await this.reregister(id, existing)
       return results.every(Boolean)
         ? { ok: true }

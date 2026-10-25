@@ -5,10 +5,12 @@ import type {
 } from '../shared/TautBridge'
 
 /** the same shape for every supported bridge version, with flags for what older loaders lack */
-export type NormalizedBridge = Omit<TautBridge, 'fetch'> & {
+export type NormalizedBridge = Omit<TautBridge, 'fetch' | 'deleteSecret'> & {
   /** bridgeVersion >= 3 */
   readonly supportsUserPlugins: boolean
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>
+  /** blanks the value on loaders without it, which reads back as '' */
+  deleteSecret(key: string): Promise<boolean>
 }
 
 /** Electron's contextBridge structure-clones, so the response must be rebuilt */
@@ -125,7 +127,9 @@ export function normalizeBridge(raw: TautBridge): NormalizedBridge {
     cookies,
     readSecret: call(raw.readSecret),
     writeSecret: call(raw.writeSecret),
-    deleteSecret: raw.deleteSecret && call(raw.deleteSecret),
+    deleteSecret: raw.deleteSecret
+      ? call(raw.deleteSecret)
+      : (key: string) => call(raw.writeSecret)(key, ''),
     PATHS: raw.PATHS,
   }
 

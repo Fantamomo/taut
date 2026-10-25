@@ -13,12 +13,13 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import http from 'node:http'
-import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { buildDesktopJs } from '../build/desktop.ts'
+import { type Cdp, cdpJson, connect } from './cdp.ts'
 import { DESKTOP, ROOT, TAUT_DEBUG_JS, TAUT_JS } from './paths.ts'
+import { freePort } from './ports.ts'
 
 export const instanceRoot = (name: string) =>
   path.join(os.homedir(), '.taut-dev', name)
@@ -145,20 +146,6 @@ async function writeAppUrl(configDir: string, appUrl: string) {
   // the notification prompt steals focus on a fresh instance's first launch
   prefs.notifPrompted = true
   await writeFile(file, `${JSON.stringify(prefs, null, 2)}\n`)
-}
-
-export async function freePort(from: number): Promise<number> {
-  for (let port = from; port < from + 200; port++) {
-    const free = await new Promise<boolean>((resolve) => {
-      const server = net
-        .createServer()
-        .once('error', () => resolve(false))
-        .once('listening', () => server.close(() => resolve(true)))
-        .listen(port, '127.0.0.1')
-    })
-    if (free) return port
-  }
-  throw new Error(`no free port near ${from}`)
 }
 
 export interface InstanceOptions {
@@ -305,6 +292,8 @@ export async function launchInstance(
     '--disable-background-timer-throttling',
     `--remote-debugging-port=${cdpPort}`,
     ...(inspectPort ? [`--inspect=${inspectPort}`] : []),
+    // the sandbox refuses to run as root
+    ...(process.getuid?.() === 0 ? ['--no-sandbox'] : []),
   ]
 
   const log = createWriteStream(logPath, { flags: 'a' })
@@ -666,61 +655,6 @@ export function foldCpuProfile(profile: any): CpuProfile {
     byFunction: byFunction.sort((a, b) => b.ms - a.ms),
     raw: profile,
   }
-}
-
-// a CDP connection, attached targets multiplexed over it by sessionId
-
-export interface Cdp {
-  send<T = any>(method: string, params?: object, sessionId?: string): Promise<T>
-  /** returns an unsubscribe function */
-  on(listener: (event: { method: string; params: any }) => void): () => void
-  close(): void
-}
-
-function connect(url: string): Promise<Cdp> {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url)
-    const pending = new Map<number, (result: any, error?: any) => void>()
-    const listeners = new Set<(event: any) => void>()
-    let nextId = 1
-
-    ws.addEventListener('message', (event) => {
-      const message = JSON.parse(String(event.data))
-      if (typeof message.id !== 'number') {
-        for (const listener of listeners) listener(message)
-        return
-      }
-      pending.get(message.id)?.(message.result, message.error)
-      pending.delete(message.id)
-    })
-    ws.addEventListener('error', () => reject(new Error(`cannot open ${url}`)))
-    ws.addEventListener('open', () =>
-      resolve({
-        send(method, params = {}, sessionId) {
-          const id = nextId++
-          ws.send(JSON.stringify({ id, method, params, sessionId }))
-          return new Promise((ok, fail) => {
-            pending.set(id, (result, error) =>
-              error
-                ? fail(new Error(`${method}: ${error.message}`))
-                : ok(result)
-            )
-          })
-        },
-        on(listener) {
-          listeners.add(listener)
-          return () => listeners.delete(listener)
-        },
-        close: () => ws.close(),
-      })
-    )
-  })
-}
-
-const cdpJson = async <T>(port: number, route: string): Promise<T> => {
-  const res = await fetch(`http://127.0.0.1:${port}${route}`)
-  if (!res.ok) throw new Error(`${route} responded ${res.status}`)
-  return res.json() as Promise<T>
 }
 
 /** retries until the value is truthy, giving up if the app dies */

@@ -24,15 +24,17 @@ Turn plugins on and off in `Preferences` > `Taut`, where you can also write your
 
 <!-- begin plugins (written by scripts/readme.ts) -->
 
-<details><summary>All 33 plugins</summary>
+<details><summary>All 36 plugins</summary>
 
 #### Messages
 
 - **Bring Back Slackbot**: Makes Slackbot custom responses be from Slackbot again
 - **Copy Reacted**: Copy the list of people who reacted to a message
+- **Owl Mode** (Hack Club only): Reply and react anonymously as the author of your owl confessions
 - **Show Real User**: Shows the user who sent a message via a bot like at-channel
 - **Show Sending Bot**: Shows the bot used to send a user message
 - **Shut Up Slackbot**: Marks Slackbot's "an app took over your slash command" DMs as read and silences them
+- **Thread Jump**: Jump to the top, bottom, a date, or 100 replies at a time in long threads
 - **User Pronouns**: Shows people's pronouns next to the timestamp on their messages
 - **Who Reacted**: Shows the avatars of everyone who reacted next to each reaction
 
@@ -52,6 +54,7 @@ Turn plugins on and off in `Preferences` > `Taut`, where you can also write your
 
 - **Admin Backend** (Hack Club only): Adds buttons to open a member in Hack Club tools
 - **Custom Name Recording**: Uploads an audio file as your name recording, instead of recording one
+- **Huddle Activity**: Logs who did what in a huddle, including mutes and settings changes
 - **Human Count**: Leaves apps, and optionally guests, out of the channel header's member count
 - **IDV Status** (Hack Club only): Shows a red squiggle on users who are not IDV eligible, and orange when verified ID but >18
 - **Last Seen**: Shows when someone was last seen on their profile

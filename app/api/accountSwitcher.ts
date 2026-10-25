@@ -114,7 +114,7 @@ export class AccountSwitcher {
     if (!account.team?.url || !account.team?.token || !account.xoxd)
       return 'invalid'
     try {
-      const url = `${account.team.url.replace(/\/?$/, '/')}api/auth.test`
+      const url = new URL('api/auth.test', account.team.url).href
       const res = await this.bridge.fetch(url, {
         method: 'POST',
         headers: {

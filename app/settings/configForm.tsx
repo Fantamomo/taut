@@ -81,11 +81,6 @@ export const CONFIG_FORM_CSS = `
       0 4px 6px -4px rgba(0, 0, 0, 0.1),
       0 10px 15px -3px rgba(0, 0, 0, 0.1);
   }
-  .taut-settings__picker-head {
-    padding: 12px;
-    border-bottom: 1px solid var(--dt_color-otl-ter);
-    font-weight: 700;
-  }
   .taut-settings__picker-body {
     display: flex;
     flex-direction: column;
@@ -442,7 +437,106 @@ function toHex(color: string): string {
 
 const isColor = (text: string) => CSS.supports('color', text)
 
-/** a swatch that opens Slack's color picker */
+type HSV = [hue: number, saturation: number, brightness: number]
+
+/** hue 0-360, saturation and brightness 0-1, from #rrggbb */
+function hexToHsv(hex: string): HSV {
+  const [r, g, b] = [1, 3, 5].map(
+    (i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255
+  )
+  const max = Math.max(r, g, b)
+  const range = max - Math.min(r, g, b)
+  const sector =
+    range === 0
+      ? 0
+      : max === r
+        ? ((g - b) / range + 6) % 6
+        : max === g
+          ? (b - r) / range + 2
+          : (r - g) / range + 4
+  return [sector * 60, max === 0 ? 0 : range / max, max]
+}
+
+function hsvToHex([hue, saturation, brightness]: HSV): string {
+  const channel = (n: number) => {
+    const k = (n + hue / 60) % 6
+    const value =
+      brightness - brightness * saturation * Math.max(0, Math.min(k, 4 - k, 1))
+    return Math.round(value * 255)
+      .toString(16)
+      .padStart(2, '0')
+  }
+  return `#${channel(5)}${channel(3)}${channel(1)}`
+}
+
+/** Slack-style color picker without opacity, drawn with slack's classes, `value` (#rrggbb) is only read on mount (uncontrolled) */
+function ColorPicker({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (hex: string) => void
+}) {
+  const [hsv, setHsv] = React.useState(() => hexToHsv(value))
+  const [hue, saturation, brightness] = hsv
+  const update = (next: HSV) => {
+    setHsv(next)
+    onChange(hsvToHex(next))
+  }
+  const pick = (e: React.PointerEvent<HTMLDivElement>) => {
+    const box = e.currentTarget.getBoundingClientRect()
+    const clamp = (n: number) => Math.min(1, Math.max(0, n))
+    update([
+      hue,
+      clamp((e.clientX - box.left) / box.width),
+      clamp(1 - (e.clientY - box.top) / box.height),
+    ])
+  }
+
+  return (
+    <div className="taut-settings__picker-body">
+      <div
+        className="c-sv_picker__gradient_box"
+        style={{
+          background: `linear-gradient(hsla(${hue}, 100%, 100%, 0), hsla(${hue}, 100%, 0%, 1)), linear-gradient(90deg, hsla(${hue}, 0%, 100%), hsla(${hue}, 100%, 50%))`,
+          touchAction: 'none',
+        }}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId)
+          pick(e)
+        }}
+        onPointerMove={(e) => {
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) pick(e)
+        }}
+      >
+        <span
+          className="c-sv_picker__thumb"
+          style={{
+            left: `${saturation * 100}%`,
+            top: `${(1 - brightness) * 100}%`,
+          }}
+        />
+      </div>
+      <span className="c-color_slider">
+        <span className="c-color_slider__outer_hue_track" />
+        <span className="c-color_slider__inner_hue_track" />
+        <input
+          type="range"
+          className="c-slider__input c-color_slider__slider"
+          aria-label="Hue"
+          min={0}
+          max={359}
+          value={Math.round(hue)}
+          onChange={(e) =>
+            update([Number(e.target.value), saturation, brightness])
+          }
+        />
+      </span>
+    </div>
+  )
+}
+
+/** a swatch that opens a color picker */
 function ColorControl({ id, value, commit }: ControlProps<string>) {
   const [draft, setDraft] = useDraft(value, String)
   const [rejected, setRejected] = React.useState(false)
@@ -482,13 +576,11 @@ function ColorControl({ id, value, commit }: ControlProps<string>) {
           ariaLabel="Pick a color"
         >
           <div className="taut-settings__picker">
-            <div className="taut-settings__picker-head">Pick a color</div>
-            <elements.HSVPicker
-              className="taut-settings__picker-body"
-              value={toHex(shown).slice(1)}
+            <ColorPicker
+              value={toHex(shown)}
               onChange={(hex) => {
                 setRejected(false)
-                setDraft(`#${hex.toLowerCase()}`)
+                setDraft(hex)
               }}
             />
           </div>

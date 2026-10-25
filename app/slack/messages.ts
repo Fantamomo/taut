@@ -1,4 +1,5 @@
 import { userAPI } from '../api/userAPI'
+import { Store } from '../store'
 import {
   getPatchVersion,
   getRawState,
@@ -664,28 +665,33 @@ export function patchMessageText(transform: TextTransform): () => void {
   }
 }
 
-type SenderDetails = (
-  state: any,
-  item: SlackActivityItem | undefined
+type UseSenderDetails = (
+  item: SlackActivityItem
 ) => { senderType?: string; senderId?: string } | undefined
+
+// slack keeps the selector private and exports `e=>useSelector(t=>getSenderDetailsFromActivityItem(t,e))`
+const callsSenderDetails = (exp: any): boolean =>
+  typeof exp === 'function' &&
+  exp.length === 1 &&
+  Function.prototype.toString
+    .call(exp)
+    .includes('getSenderDetailsFromActivityItem(')
 
 export const messagesPromise = (async () => {
   const { useReduxState } = await reduxPromise
   // the activity view is a lazy chunk
-  let readSender: SenderDetails | undefined
-  waitForExport<SenderDetails>(byName('getSenderDetailsFromActivityItem')).then(
-    (found) => {
-      readSender = found
-    }
+  const senderDetailsHook = new Store<UseSenderDetails | undefined>(undefined)
+  waitForExport<UseSenderDetails>(callsSenderDetails).then(
+    senderDetailsHook.set
   )
 
   function useActivityMessage(
     item: SlackActivityItem | undefined
   ): SlackMessage | undefined {
-    const drawn = useReduxState<string | undefined>((state) => {
-      const sender = readSender?.(state, item)
-      return sender?.senderType === 'app' ? undefined : sender?.senderId
-    })
+    const useSenderDetails = senderDetailsHook.use()
+    // slack's activity rows import the hook, so it loads before any row renders and stays for its life
+    const sender = useSenderDetails && item ? useSenderDetails(item) : undefined
+    const drawn = sender?.senderType === 'app' ? undefined : sender?.senderId
     const msg =
       item?.channelId && item.messageTs
         ? getRawMessage(item.channelId, item.messageTs)

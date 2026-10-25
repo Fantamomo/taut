@@ -4,6 +4,7 @@ import {
   byName,
   patchFunctionExport,
   patchModuleExports,
+  waitForExport,
 } from './webpack'
 
 export type SlackStore = {
@@ -128,6 +129,57 @@ export function waitForState<T>(
     signal?.addEventListener('abort', check)
     check()
   })
+}
+
+// slack's store spanning every workspace
+const clientStorePromise = waitForExport<() => SlackStore | null>(
+  byName('getClientStoreInstance')
+).then((getStore) => waitForState(() => getStore() ?? undefined))
+
+/** Slack's store spanning every workspace, once it exists */
+export function waitForClientStore(): Promise<SlackStore> {
+  return clientStorePromise
+}
+
+let teamContexts: any[] | undefined
+
+/** the react contexts providing the rendered store, Slack provides the same state under more than one */
+function teamStoreContexts(): any[] {
+  if (teamContexts) return teamContexts
+  const store = getReduxStore()
+  const start = document.querySelector('.p-client_container')?.firstElementChild
+  if (!store || !start) return []
+  const state = store.getState()
+  const found: any[] = []
+  for (let fiber = getFiberFromNode(start); fiber; fiber = fiber.return) {
+    const provided = fiber.memoizedProps?.value?.store
+    if (
+      fiber.type?.$$typeof === Symbol.for('react.context') &&
+      typeof provided?.getState === 'function' &&
+      provided.getState() === state &&
+      !found.includes(fiber.type)
+    )
+      found.push(fiber.type)
+  }
+  if (found.length) teamContexts = found
+  return found
+}
+
+/** `store` with its state read through `patch`, cached per state so selectors stay stable */
+function viewStore(store: SlackStore, patch: StatePatch): SlackStore {
+  let input: unknown
+  let output: unknown
+  return {
+    ...store,
+    getState: () => {
+      const state = store.getState()
+      if (state !== input) {
+        input = state
+        output = guarded(patch, state, () => patch(state))
+      }
+      return output
+    },
+  }
 }
 
 /** Slack's state as it is stored, with Taut's read-time transforms left off */
@@ -539,6 +591,57 @@ export const reduxPromise = (async () => {
     return React.useSyncExternalStore(subscribePatches, getPatchVersion)
   }
 
+  type StateViewProps = {
+    contexts: React.Context<any>[]
+    /** rerun whenever it changes, so keep it stable */
+    patch: StatePatch
+    children?: React.ReactNode
+  }
+
+  function StateViewLayer({
+    contexts,
+    patch,
+    children,
+  }: StateViewProps): React.ReactElement {
+    const [context, ...rest] = contexts
+    const value = React.useContext(context)
+    const scoped = React.useMemo(
+      () =>
+        value?.store
+          ? { ...value, store: viewStore(value.store, patch) }
+          : value,
+      [value, patch]
+    )
+    return (
+      <context.Provider value={scoped}>
+        {rest.length ? (
+          <StateViewLayer contexts={rest} patch={patch}>
+            {children}
+          </StateViewLayer>
+        ) : (
+          children
+        )}
+      </context.Provider>
+    )
+  }
+
+  /** renders `children` against Slack's state read through `patch` (keep `patch` stable) */
+  function StateView({
+    patch,
+    children,
+  }: {
+    patch: StatePatch
+    children?: React.ReactNode
+  }) {
+    const contexts = teamStoreContexts()
+    if (!contexts.length) return <>{children}</>
+    return (
+      <StateViewLayer contexts={contexts} patch={patch}>
+        {children}
+      </StateViewLayer>
+    )
+  }
+
   return {
     getStore: getReduxStore,
     waitForStore,
@@ -546,6 +649,7 @@ export const reduxPromise = (async () => {
     waitForState,
     useReduxState,
     usePatchVersion,
+    StateView,
     patchState,
     patchSlice,
     mapEntries,

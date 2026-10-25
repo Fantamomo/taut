@@ -49,11 +49,23 @@ export const byName =
   (exp) =>
     typeof exp === 'function' && exp.name === name
 
-/** matches a function export by the `meta.name` Slack gives its selectors, thunks and actions */
+// we need to keep track of names, they're not always on the meta anymore
+const selectorNames = new WeakMap<(...args: any[]) => any, string>()
+
+/** store the name so `byMeta` can find it later */
+export function nameSelector(
+  selector: (...args: any[]) => any,
+  name: string
+): void {
+  selectorNames.set(selector, name)
+}
+
+/** matches a function export by the `meta.name` Slack gives its thunks and actions, or the name we stored */
 export const byMeta =
   (name: string): SimpleMatcher =>
   (exp) =>
-    typeof exp === 'function' && exp.meta?.name === name
+    typeof exp === 'function' &&
+    (exp.meta?.name ?? selectorNames.get(exp)) === name
 
 function matchExportOrProps(exports: any, matcher: SimpleMatcher): any {
   try {
@@ -192,7 +204,9 @@ export function patchFunctionExport(
         const patched = Object.assign(function (this: unknown, ...args: any[]) {
           return (active ? wrapped : original).apply(this, args)
         }, original)
-        // keeps byName lookups finding it
+        // keeps byName and byMeta lookups finding it
+        const name = selectorNames.get(original)
+        if (name) nameSelector(patched, name)
         return Object.defineProperty(patched, 'name', { value: original.name })
       }
     )
@@ -202,6 +216,17 @@ export function patchFunctionExport(
     moduleExportsPatchers.delete(patcher)
   }
 }
+
+// slack registers names for its debugger, hook so we can capture those names too
+patchFunctionExport(
+  byName('exposeSelectorForDebug'),
+  (original) =>
+    (name, selector, ...rest) => {
+      if (typeof name === 'string' && typeof selector === 'function')
+        nameSelector(selector, name)
+      return original(name, selector, ...rest)
+    }
+)
 
 function wrapModuleFactory(
   moduleId: PropertyKey,

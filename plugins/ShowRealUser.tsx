@@ -97,7 +97,7 @@ export default class ShowRealUser extends TautPlugin<typeof ShowRealUser> {
   /** the bot's own link, repointed at a person, keeping the workspace domain */
   private profileLink(link: string | undefined, user: string) {
     try {
-      return `${new URL(link ?? '').origin}/team/${user}`
+      return new URL(`/team/${user}`, link).href
     } catch {
       return link
     }

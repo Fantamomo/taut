@@ -6,7 +6,6 @@ import {
   getReduxStore,
   reduxPromise,
 } from './redux'
-import { waitForExport } from './webpack'
 
 export type SlackMember = {
   id?: string
@@ -27,8 +26,6 @@ export type SlackMember = {
   }
   [key: string]: unknown
 }
-
-type GetMemberById = (state: any, userId: string) => SlackMember | undefined
 
 // mirrors Slack's name logic (`computeDerivedNames`)
 const deburr = (s: string): string =>
@@ -131,20 +128,10 @@ export async function getMember(
 export const membersPromise = (async () => {
   const React = await reactPromise
   const { useReduxState } = await reduxPromise
-  let selector: GetMemberById | undefined
-  waitForExport<GetMemberById>(
-    (e: any) =>
-      typeof e === 'function' && e.meta?.key === 'createSelectorGetMemberById'
-  ).then((found) => {
-    selector = found
-  })
-  const readMember: GetMemberById = (state, userId) =>
-    selector?.(state, userId) ?? state.members?.[userId]
-
   /** reactively read a member, asking Slack to load them if it hasn't yet */
   function useMember(userId: string): SlackMember | undefined {
     const member = useReduxState<SlackMember | undefined>((s) =>
-      loaded(readMember(s, userId))
+      loaded(s?.members?.[userId])
     )
     const missing = !member
     React.useEffect(() => {

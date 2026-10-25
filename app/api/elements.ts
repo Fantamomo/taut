@@ -130,6 +130,20 @@ export type DateRangePickerProps = {
   'aria-label'?: string
 }
 
+/** opens Slack's calendar from the element it wraps */
+export type DatePickerTriggerProps = {
+  /** reports the picked date in `dateFormat` */
+  onDateChange: (date: string) => void
+  selectedDate?: string
+  /** how dates are parsed and reported back, defaults to "YYYY-MM-DD" */
+  dateFormat?: string
+  disabledDates?: string[]
+  disableDatesBefore?: string
+  disableDatesAfter?: string
+  /** one element, not a fragment */
+  children: React.ReactElement
+}
+
 /** Slack's section wrapper, holding a Legend and its controls */
 export type FieldSetProps = {
   id?: string
@@ -149,7 +163,11 @@ export type HintProps = {
   className?: string
 }
 
-export type SelectOption = { label: string; value: string }
+export type SelectOption = {
+  /** a node instead of a string, like `<MrkdwnElement text=":tada:" />`, loses Slack's typeahead and screen reader text */
+  label: React.ReactNode
+  value: string
+}
 
 export type BasicSelectProps = {
   selectId: string
@@ -314,15 +332,6 @@ export type PopoverProps = {
   children?: React.ReactNode
 }
 
-/** colors are hex without the `#` (like "e01e5a"), and `value` is only read on mount */
-export type HSVPickerProps = {
-  value: string
-  onChange: (hex: string) => void
-  /** also show an opacity slider, and report 8-digit hex */
-  alpha?: boolean
-  className?: string
-}
-
 // other components share these names, so pick slack's by the markup it draws
 // TODO: is this janky?
 const drawing = (marker: string) => (component: ComponentType) =>
@@ -353,6 +362,8 @@ export const elementsAPIPromise = (async () => {
     FilterPill: lazyComponent<FilterPillProps>('FilterPill'),
     Tag: lazyComponent<TagProps>('Tag'),
     DateRangePicker: lazyComponent<DateRangePickerProps>('DateRangePicker'),
+    DatePickerTrigger:
+      lazyComponent<DatePickerTriggerProps>('DatePickerTrigger'),
     FieldSet: lazyComponent<FieldSetProps>('FieldSet'),
     Legend: lazyComponent<LegendProps>('Legend', drawing('"c-legend"')),
     Hint: lazyComponent<HintProps>('Hint'),
@@ -365,7 +376,6 @@ export const elementsAPIPromise = (async () => {
       'Connect(EmojiMenuTrigger)'
     ),
     Popover: lazyComponent<PopoverProps>('Popover', drawing('"c-popover"')),
-    HSVPicker: lazyComponent<HSVPickerProps>('HSVPicker'),
     RichTextInput,
   }
 })()

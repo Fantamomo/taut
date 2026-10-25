@@ -1,7 +1,7 @@
 // saved for the next page load since Slack reads many experiments before any plugin starts
 
 import { patchThunk, refreshState } from './redux'
-import { byMeta, patchFunctionExport } from './webpack'
+import { nameSelector, patchModuleExports } from './webpack'
 
 /** a group to read as, or null to read as not assigned */
 export type ExperimentGroup = string | null
@@ -86,38 +86,99 @@ function allAssignments(
   return out
 }
 
-// every read of state.experiments goes through these selectors, so nothing forced is ever in the store
-for (const selector of ['getGroupForUser', 'getGroupForUserWithoutExposure'])
-  patchFunctionExport(
-    byMeta(selector),
+type Selector = (...args: any[]) => any
+type Role = 'group' | 'assignment' | 'all' | 'matching'
+
+const wraps: Record<Role, (original: Selector) => Selector> = {
+  // getGroupForUser and getGroupForUserWithoutExposure
+  group:
     (original) =>
-      (state, name, ...rest) => {
-        const group = forced.get(name)
-        return group === undefined ? original(state, name, ...rest) : group
-      }
-  )
-patchFunctionExport(
-  byMeta('getAssignmentByName'),
-  (original) => (state, name) => {
+    (state, name, ...rest) => {
+      const group = forced.get(name)
+      return group === undefined ? original(state, name, ...rest) : group
+    },
+  // getAssignmentByName
+  assignment: (original) => (state, name) => {
     const group = forced.get(name)
     const stored = original(state, name)
     return group === undefined ? stored : assignmentFor(name, stored, group)
-  }
-)
-patchFunctionExport(
-  byMeta('getAllExperimentAssignments'),
-  (original) => (state) => allAssignments(original(state))
-)
-patchFunctionExport(
-  byMeta('getAllAssignmentsMatchingQuery'),
-  (original) => (state, query) => {
+  },
+  // getAllExperimentAssignments
+  all: (original) => (state) => allAssignments(original(state)),
+  // getAllAssignmentsMatchingQuery
+  matching: (original) => (state, query) => {
     if (!forced.size) return original(state, query)
     const all = allAssignments(state?.experiments) ?? {}
     return Object.fromEntries(
       Object.entries(all).filter(([name]) => name.includes(query))
     )
+  },
+}
+
+// what byMeta finds them by
+const names: Partial<Record<Role, string>> = {
+  assignment: 'getAssignmentByName',
+  all: 'getAllExperimentAssignments',
+  matching: 'getAllAssignmentsMatchingQuery',
+}
+
+// slack's selectors have no name, match `e=>e?.experiments`
+const READS_EXPERIMENTS = /^\(?(\w+)\)?=>\1\??\.experiments$/
+const PROBE = '__taut_probe'
+
+/** probe a selector to figure out which one it is */
+function roleOf(selector: Selector): Role | undefined {
+  const stored = { group: PROBE }
+  const experiments = { [PROBE]: stored }
+  let out: any
+  try {
+    out = selector({ experiments }, PROBE)
+  } catch {
+    return
   }
-)
+  if (out === experiments) return 'all'
+  if (out === stored) return 'assignment'
+  if (out === PROBE) return 'group'
+  if (out?.[PROBE] === stored) return 'matching'
+}
+
+function readsExperiments(value: Selector): boolean {
+  if (value.length !== 1) return false
+  try {
+    return READS_EXPERIMENTS.test(Function.prototype.toString.call(value))
+  } catch {
+    return false
+  }
+}
+
+// every read of state.experiments goes through these selectors, so we never pollute the real store
+patchModuleExports((exports) => {
+  if (!exports || typeof exports !== 'object') return
+  const selectors: [string, Selector][] = []
+  for (const key of Object.keys(exports)) {
+    try {
+      const value = exports[key]
+      if (typeof value === 'function') selectors.push([key, value])
+    } catch {}
+  }
+  if (!selectors.some(([, value]) => readsExperiments(value))) return
+
+  const descriptors = Object.getOwnPropertyDescriptors(exports)
+  for (const [key, original] of selectors) {
+    const role = roleOf(original)
+    if (!role) continue
+    const wrapped = Object.assign(wraps[role](original), original)
+    const name = names[role]
+    if (name) nameSelector(wrapped, name)
+    descriptors[key] = {
+      value: wrapped,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    }
+  }
+  return Object.create(Object.getPrototypeOf(exports), descriptors)
+})
 
 // logs an exposure for whatever the assignment says, log_exposures or not
 patchThunk(

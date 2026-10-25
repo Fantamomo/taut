@@ -44,7 +44,7 @@ export const AUTHORS = {
   izie: {
     name: 'Izie',
     slackId: 'U09KKMHLS15',
-    url: 'https://github.com/IzieStratt',
+    url: 'https://izie.top',
   },
   adryd: { name: 'adryd', url: 'https://adryd.com' },
   fantamomo: {

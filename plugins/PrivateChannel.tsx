@@ -103,6 +103,7 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
 
     this.patchThunks()
     this.patchChannelRendering()
+    this.patchHuddleLinks()
 
     if (this.adminKey && Date.now() - this.exportTs > EXPORT_TTL) {
       this.loadExport().catch((err) => this.log('export failed', err))
@@ -439,12 +440,12 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
   ) {
     if (base.some((r) => (r?.item?.id ?? r?.id) === id)) return base
     // the autocomplete list waits on this, so it's bounded and can't reject
-    const name = await Promise.race([
+    const name = await this.api.within(
       this.resolveTypedId(id).catch((err) =>
         this.log('Could not resolve', id, err)
       ),
-      new Promise<undefined>((resolve) => setTimeout(resolve, 5_000)),
-    ])
+      5_000
+    )
     if (!name) return base
     const rerun = await original({
       ...params,
@@ -476,6 +477,61 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
     return out
   }
 
+  /** renders `children` with Slack's own entry for `channelId` in place of our shadow */
+  private SlackChannelView = ({
+    channelId,
+    children,
+  }: {
+    channelId?: string
+    children: React.ReactNode
+  }) => {
+    const patch = React.useCallback(
+      (state: { channels?: object }) =>
+        channelId && state.channels
+          ? {
+              ...state,
+              channels: this.api.redux.mapEntries(
+                state.channels,
+                (id, entry) =>
+                  id === channelId && entry && this.synthesized.has(entry)
+                    ? this.api.redux.getRawState()?.channels?.[id]
+                    : entry
+              ),
+            }
+          : state,
+      [channelId]
+    )
+    const StateView = this.api.redux.StateView
+    return <StateView patch={patch}>{children}</StateView>
+  }
+
+  // huddle links show Request to join only when slack thinks the channel is unknown
+  private patchHuddleLinks() {
+    const SlackChannelView = this.SlackChannelView
+    this.api.patchComponent<{ huddle?: { channel_id?: string } }>(
+      'MessageAttachmentHuddleLink',
+      (Original) => (props) => (
+        <SlackChannelView channelId={props.huddle?.channel_id}>
+          <Original {...props} />
+        </SlackChannelView>
+      )
+    )
+    this.api.patchComponent<{ channelId?: string }>(
+      {
+        filter: (component) =>
+          component?.$$typeof === Symbol.for('react.memo') &&
+          typeof component.type === 'function' &&
+          !component.type.name &&
+          String(component.type).includes('canJoinByExternalHuddleLink'),
+      },
+      (Original) => (props) => (
+        <SlackChannelView channelId={props.channelId}>
+          <Original {...props} />
+        </SlackChannelView>
+      )
+    )
+  }
+
   /** a grayed-out channel mention that shows a name/id */
   private renderMissing(name: string) {
     const SvgIcon = this.api.elements.SvgIcon
@@ -499,7 +555,11 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
       // Slack's stubs carry a placeholder name like "unknown-channel"
       const stub = props.isNonExistent || props.isUnknown
       if ((stub || (props.isPrivate && !props.isMember)) && props.id)
-        return this.renderMissing((!stub && props.channelName) || props.id)
+        return this.renderMissing(
+          (!stub && props.channelName) ||
+            this.shadows.get(props.id)?.name ||
+            props.id
+        )
 
       return <Original {...props} />
     })
@@ -520,7 +580,9 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
         >((s) => (id ? s.channels?.[id] : undefined))
         const stub = channel?.isNonExistent || channel?.isUnknown
         if ((stub || (channel?.is_private && !channel.is_member)) && id)
-          return this.renderMissing((!stub && channel?.name) || id)
+          return this.renderMissing(
+            (!stub && channel?.name) || this.shadows.get(id)?.name || id
+          )
 
         return <Original {...props} />
       }

@@ -1,7 +1,11 @@
+import { within } from '../helpers'
 import { reactPromise } from '../slack/react'
 import { getReduxStore } from '../slack/redux'
 import { byMeta, waitForExport } from '../slack/webpack'
 import { elementsAPIPromise } from './elements'
+
+/** how long a modal waits for Slack's modal system to load before it counts as dismissed */
+const MODAL_WAIT_MS = 10_000
 
 type RawModalHandle = { close: () => void; render: (props: unknown) => void }
 type OpenModalThunk = (opts: {
@@ -95,24 +99,19 @@ export const modalAPIPromise = (async () => {
   await reactPromise
   const elements = await elementsAPIPromise
 
-  let openModalThunk: OpenModalThunk | undefined
-  waitForExport<OpenModalThunk>(byMeta('openModal')).then((found) => {
-    openModalThunk = found
-  })
+  const openModalThunk = waitForExport<OpenModalThunk>(byMeta('openModal'))
 
   const Confirmation = elements.ConfirmationModal
   const Label = elements.Label
   const TextInput = elements.FormTextInput
 
-  function openModal(options: OpenModalOptions): ModalHandle | null {
-    const store = getReduxStore()
-    const openModalAction = openModalThunk
-    if (!store || !openModalAction) {
-      console.error('[Taut] Modal API: Slack modal system unavailable')
-      return null
+  function openModal(options: OpenModalOptions): ModalHandle {
+    let raw: RawModalHandle | undefined
+    let closed = false
+    const close = () => {
+      closed = true
+      raw?.close()
     }
-
-    const closeRef = { current: () => {} }
     const element = (
       <Confirmation
         title={options.title}
@@ -123,15 +122,15 @@ export const modalAPIPromise = (async () => {
         showSubmitButton={options.showSubmitButton ?? true}
         onSubmit={() => {
           options.onSubmit?.()
-          closeRef.current()
+          close()
         }}
         onCancel={() => {
           options.onCancel?.()
-          closeRef.current()
+          close()
         }}
         onClose={() => {
           options.onClose?.()
-          closeRef.current()
+          close()
         }}
       >
         {options.body}
@@ -139,12 +138,17 @@ export const modalAPIPromise = (async () => {
     )
 
     const name = typeof options.title === 'string' ? options.title : 'modal'
-    const handle = store.dispatch(
-      openModalAction({ element, name, isStackable: true })
-    ) as RawModalHandle | undefined
-    closeRef.current = () => handle?.close()
-
-    return { close: () => handle?.close() }
+    within(openModalThunk, MODAL_WAIT_MS, "Slack's openModal action").then(
+      (openModalAction) => {
+        if (closed) return
+        const store = getReduxStore()
+        if (!openModalAction || !store) return options.onClose?.()
+        raw = store.dispatch(
+          openModalAction({ element, name, isStackable: true })
+        ) as RawModalHandle | undefined
+      }
+    )
+    return { close }
   }
 
   return { openModal, ...dialogHelpersFor(openModal), Label, TextInput }

@@ -110,10 +110,9 @@ export default class IdvStatus extends TautPlugin<typeof IdvStatus> {
 
   async fetchIdvStatus(userId: string): Promise<IdvStatusType> {
     return this.cache.fetch(userId, async () => {
-      const response = await fetch(
-        `https://identity.hackclub.com/api/external/check?slack_id=${userId}`,
-        { signal: this.api.signal }
-      )
+      const url = new URL('https://identity.hackclub.com/api/external/check')
+      url.searchParams.set('slack_id', userId)
+      const response = await fetch(url, { signal: this.api.signal })
       if (!response.ok)
         throw new Error(`HTTP error! status: ${response.status}`)
       const data = await response.json()

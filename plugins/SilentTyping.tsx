@@ -17,6 +17,11 @@ export default class SilentTyping extends TautPlugin<typeof SilentTyping> {
 
   /** channel ids with typing hidden */
   private readonly silenced = new this.api.Store<ReadonlySet<string>>(new Set())
+  /** "channel-threadTs" of Owl Mode's composers, which never send typing */
+  private readonly owlComposers = this.api.sharedFrom<readonly string[]>(
+    'OwlMode',
+    'composers'
+  )
 
   private toggle(channelId: string) {
     this.silenced.update((silenced) => {
@@ -45,16 +50,23 @@ export default class SilentTyping extends TautPlugin<typeof SilentTyping> {
     this.api.composer.addButton({
       id: 'taut-silent-typing',
       placement: 'end',
-      render: ({ channelId }) => {
+      render: (context) => {
+        const { channelId } = context
         const silenced = this.silenced.use().has(channelId)
+        const owl = this.owlComposers.use()
+        if (
+          context.kind === 'thread' &&
+          owl?.includes(`${channelId}-${context.threadTs}`)
+        )
+          return null
         return {
           icon: silenced ? 'notifications-off' : 'notifications',
           label: silenced
             ? 'Show typing in this chat'
             : 'Hide typing in this chat',
           tooltip: silenced
-            ? 'Show typing in this chat (hidden until you reload)'
-            : 'Hide typing in this chat until you reload',
+            ? 'Show typing in this chat'
+            : 'Hide typing in this chat',
           pressed: silenced,
           onClick: () => this.toggle(channelId),
         }

@@ -139,24 +139,17 @@ export default class Experiments extends TautPlugin<typeof Experiments> {
       return next
     })
 
-  /** find `(0,x.getGroupForUser)(state, "name")` calls and the groups they're compared to, best effort */
+  /** find `(0,x.getGroupForUser)(state, "name")` calls to the experiment selectors and the groups they're compared to, best effort */
   private async scanCode() {
-    const selectors = await this.api.waitForExport<Record<string, any>>(
+    const isAll = this.api.byMeta('getAllExperimentAssignments')
+    const selectors = await this.api.waitForExport<Record<string, unknown>>(
       (exp: any) =>
-        !!exp &&
-        typeof exp === 'object' &&
-        Object.values(exp).some(
-          (value: any) => value?.meta?.name === 'getGroupForUser'
-        )
+        !!exp && typeof exp === 'object' && Object.values(exp).some(isAll)
     )
     const id = this.api.findModuleId(selectors)
     if (id === undefined) return
-    const keys = Object.keys(selectors).filter((key) =>
-      [
-        'getGroupForUser',
-        'getGroupForUserWithoutExposure',
-        'getAssignmentByName',
-      ].includes(selectors[key]?.meta?.name)
+    const keys = Object.keys(selectors).filter(
+      (key) => typeof selectors[key] === 'function'
     )
     const required = /^\d+$/.test(id)
       ? `\\(${id}\\)`
@@ -202,9 +195,8 @@ export default class Experiments extends TautPlugin<typeof Experiments> {
         () => this.api.redux.getRawState()?.experiments
       ) ?? NO_ASSIGNMENTS
     const allAssignments = this.allAssignments.use()
-    const effective: Record<string, Assignment> =
-      this.api.redux.useReduxState((state) => allAssignments?.(state)) ??
-      assignments
+    const effective: Record<string, Assignment> | undefined =
+      this.api.redux.useReduxState((state) => allAssignments?.(state))
     const [query, setQuery] = React.useState('')
     const [filter, setFilter] = React.useState<Filter>('all')
     const [limit, setLimit] = React.useState(PAGE)
@@ -333,7 +325,7 @@ export default class Experiments extends TautPlugin<typeof Experiments> {
               row={row}
               assigned={assignments[row.name]?.group}
               override={overrides[row.name]}
-              effective={effective[row.name]?.group ?? null}
+              effective={effective && (effective[row.name]?.group ?? null)}
             />
           ))}
         </ul>
@@ -365,8 +357,8 @@ export default class Experiments extends TautPlugin<typeof Experiments> {
       row: Row
       assigned: string | undefined
       override: string | null | undefined
-      /** the group Slack reads, which another plugin may be forcing */
-      effective: string | null
+      /** the group Slack reads, which another plugin may be forcing, undefined if unknown */
+      effective: string | null | undefined
     }) => {
       const { elements } = this.api
       const [custom, setCustom] = React.useState<string | null>(null)
@@ -423,7 +415,7 @@ export default class Experiments extends TautPlugin<typeof Experiments> {
               )
             }}
           />
-          {effective !== picked && (
+          {effective !== undefined && effective !== picked && (
             <span className="taut-experiments__forced">
               Forced by a plugin: {effective ?? 'not assigned'}
             </span>

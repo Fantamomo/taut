@@ -103,7 +103,7 @@ export default class UserPronouns extends TautPlugin<typeof UserPronouns> {
 
     // the component handed both the sender and the timestamp, in channels
     this.api.patchComponent<BroadcastPreambleProps>(
-      'BroadcastPreamble',
+      'BaseBroadcastPreamble',
       (Original) => (props) => {
         if (!isPerson(props.msg)) return <Original {...props} />
 

@@ -8,6 +8,7 @@ export type {
   BasicSelectProps,
   BlocksProps,
   CheckboxProps,
+  DatePickerTriggerProps,
   DateRangePickerProps,
   FieldSetProps,
   FilterPillProps,
@@ -45,6 +46,14 @@ export type {
   ExperimentGroup,
   ForcedExperiments,
 } from '../app/slack/experiments'
+export type {
+  ActiveHuddle,
+  HuddleCall,
+  HuddleReaction,
+  PeerMessage,
+  PeerMessageEvent,
+  PeerMessageKind,
+} from '../app/slack/huddles'
 export type { MessageSendTransform } from '../app/slack/messageSend'
 export type {
   SlackActivityItem,
@@ -55,6 +64,7 @@ export type {
 export type { SlackStatus } from '../app/slack/profile'
 export type { ComponentType, componentReplacer } from '../app/slack/react'
 export type { RtmEvent } from '../app/slack/rtm'
+export type { ThreadPane } from '../app/slack/threads'
 export type { Author, AuthorKey, PluginAuthors } from './authors'
 
 export interface TautPluginConfig {

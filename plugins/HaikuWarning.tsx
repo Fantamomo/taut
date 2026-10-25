@@ -1,12 +1,32 @@
 // Warns before you send a haiku that Orpheus would repeat in the thread
 
-import { TautPlugin } from '$taut'
+import { opt, TautPlugin } from '$taut'
 
 const DICTIONARY_COMMIT = 'aece7f5fcc873b8e71ecccfa5216849fafd959e1'
 const DICTIONARY_URL = `https://raw.githubusercontent.com/hackclub/orpheus-bot/${DICTIONARY_COMMIT}/app/lib/haiku_check/syllable_counts.txt`
 const DOWNLOAD_TIMEOUT = 60_000
-/** how long after a failed download a send may try it again */
+/** how long after a failed download to try it again */
 const RETRY_AFTER = 10 * 60_000
+const ORPHEUS_USER = 'UM1L1C38X'
+/** where Orpheus skips haikus, or firehose deletes her replies */
+const SKIPPED_CHANNELS = [
+  'C09MATKQM8C', // flavortown-help
+  'CNMU9L92Q', // confessions
+  'C0188CY57PZ', // meta
+  'C07TM4C0AQ5', // help
+  'C0B3NSM2CMP', // phantom-bulletin
+  'C085UEFDW6R', // community-logs
+  'C0AP0NMSP3P', // stardance-help
+  'CN523HLKW', // hcb
+  'C0ANGHXK0KH', // prometheus-public
+]
+
+type ContextBarProps = {
+  channelId?: string
+  threadTs?: string
+  draftId?: string
+  onIsContextBarShowing?: (showing: boolean) => void
+}
 
 export default class HaikuWarning extends TautPlugin<typeof HaikuWarning> {
   static readonly id = 'HaikuWarning'
@@ -18,36 +38,133 @@ export default class HaikuWarning extends TautPlugin<typeof HaikuWarning> {
   static readonly hackClubOnly = true
   static readonly defaultConfig = {
     enabled: false,
+    warning: opt.select(
+      [
+        { value: 'banner', label: 'A banner as you type' },
+        { value: 'popup', label: 'A pop-up when you send' },
+        { value: 'both', label: 'Both' },
+      ],
+      'banner',
+      'How to warn you about a haiku'
+    ),
+    bannerDelay: opt.number(
+      250,
+      'How long before the banner shows, in milliseconds',
+      { min: 0, max: 2000 }
+    ),
+    requireDoubleSend: opt(
+      false,
+      'When just the banner is shown, require a second send to actually send the haiku'
+    ),
+    anyChannel: opt(
+      false,
+      "Warn even if Orpheus doesn't respond in this channel"
+    ),
   }
 
   // keyed by commit, so bumping it replaces the old copy
   private cache = new this.api.Cache<string>('syllables', { maxSize: 1 })
-  private dictionary?: string
+  private readonly dictionary = new this.api.Store<string | undefined>(
+    undefined
+  )
   private loading = false
   private retryAt = 0
+  /** conversations whose Orpheus membership has been looked up */
+  private readonly lookedUp = new Set<string>()
+  /** the haiku the last send was held for (for double send confirmation) */
+  private readonly held = new this.api.Store<string | null>(null)
 
   start(): void {
     this.loadDictionary()
-    this.api.composer.addSendCheck(async (blocks, { channelId }) => {
-      const skippedChannels = [
-        'CNMU9L92Q', // meta
-        'C09MATKQM8C', // flavortown
-      ]
-      if (skippedChannels.includes(channelId)) return true
-      const { dictionary } = this
-      // best effort, so a send never waits on the download
+    const { warning, requireDoubleSend } = this.config
+    if (warning !== 'popup') this.startBanner()
+    if (warning !== 'banner' || requireDoubleSend) this.startSendCheck()
+  }
+
+  private startBanner(): void {
+    const doubleSend =
+      this.config.requireDoubleSend && this.config.warning === 'banner'
+
+    // when multiple bars, combine them
+    this.api.setStyle(`
+      .p-context_bar_v2:has(+ .taut-haiku-context-bar) > .p-context_bar_v2__filler {
+        display: none;
+      }
+      .p-context_bar_v2 + .taut-haiku-context-bar {
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+      }
+      .taut-haiku-context-bar .p-context_bar_v2__icon .c-emoji,
+      .taut-haiku-context-bar .p-context_bar_v2__icon .c-emoji img {
+        display: block;
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        top: 0;
+      }
+    `)
+
+    this.api.patchComponent<ContextBarProps>(
+      'BaseContextBarV2',
+      (Original) => (props) => {
+        const { shown, held } = this.useHaiku(props)
+        const { onIsContextBarShowing } = props
+        const onShowing = React.useCallback(
+          (showing: boolean) => onIsContextBarShowing?.(showing || shown),
+          [onIsContextBarShowing, shown]
+        )
+        return (
+          <>
+            <Original {...props} onIsContextBarShowing={onShowing} />
+            {shown && (
+              <div
+                className="p-context_bar_v2 p-context_bar_v2--yellow taut-haiku-context-bar"
+                data-qa="context_bar"
+                data-context-bar
+              >
+                <div className="p-context_bar_v2__icon">
+                  <this.api.elements.MrkdwnElement text=":orpheus-woah:" />
+                </div>
+                <div className="p-context_bar_v2__content">
+                  Orpheus may repeat this haiku in the thread
+                  {doubleSend &&
+                    (held
+                      ? ', so send again to send it'
+                      : ', so send twice to send it')}
+                </div>
+                <div className="p-context_bar_v2__filler" />
+              </div>
+            )}
+          </>
+        )
+      }
+    )
+  }
+
+  /** the pop-up, or holding the first send */
+  private startSendCheck(): void {
+    this.api.composer.addSendCheck(async (blocks, { channelId, threadTs }) => {
+      if (SKIPPED_CHANNELS.includes(channelId)) return true
+      const dictionary = this.dictionary.get()
       if (!dictionary) {
         this.loadDictionary()
         return true
       }
       try {
-        const text = blocksToSlackText(blocks)
-        // Orpheus skips messages this long, counted in code points like Ruby
-        if ([...text].length >= 300) return true
-        const haiku = findHaiku(text, (word) =>
-          dictionaryLookup(dictionary, word)
-        )
+        const haiku = haikuIn(blocks, dictionary)
         if (!haiku) return true
+        if (!this.config.anyChannel && !(await this.orpheusInNow(channelId)))
+          return true
+
+        if (this.config.warning === 'banner') {
+          const key = haikuKey(channelId, threadTs, haiku)
+          if (this.held.get() === key) {
+            this.held.set(null)
+            return true
+          }
+          this.held.set(key)
+          return false
+        }
 
         return await this.api.modal.confirm({
           title: (
@@ -78,12 +195,93 @@ export default class HaikuWarning extends TautPlugin<typeof HaikuWarning> {
     })
   }
 
+  /** whether a composer's draft is a haiku Orpheus would find, as it's typed, and whether its send was held */
+  private useHaiku({ channelId, threadTs, draftId }: ContextBarProps) {
+    const present = this.useOrpheusIn(channelId)
+    const checked =
+      !!channelId &&
+      !SKIPPED_CHANNELS.includes(channelId) &&
+      (this.config.anyChannel || !!present)
+    const dictionary = this.dictionary.use()
+    const ops = this.api.redux.useReduxState((state): unknown[] | undefined =>
+      draftId ? state?.drafts?.unifiedDrafts?.[draftId]?.ops : undefined
+    )
+    const [found, setFound] = React.useState<string | null>(null)
+    React.useEffect(() => {
+      if (!checked || !ops || !channelId) {
+        setFound(null)
+        return
+      }
+      if (!dictionary) {
+        this.loadDictionary()
+        return
+      }
+      let current = true
+      this.api.blocks
+        .fromDraft(ops)
+        .then((blocks) => {
+          if (!current) return
+          const haiku = haikuIn(blocks, dictionary)
+          setFound(haiku && haikuKey(channelId, threadTs, haiku))
+        })
+        .catch((error) => this.log('Could not check draft', error))
+      return () => {
+        current = false
+      }
+    }, [checked, ops, dictionary, channelId, threadTs])
+
+    // a longer message passes through a haiku as it's typed, so only showing waits
+    const isHaiku = checked && !!ops && !!found
+    const delay = this.config.bannerDelay
+    const [settled, setSettled] = React.useState(false)
+    React.useEffect(() => {
+      setSettled(false)
+      if (!isHaiku) return
+      const timer = setTimeout(() => setSettled(true), delay)
+      return () => clearTimeout(timer)
+    }, [isHaiku, delay])
+    const heldKey = this.held.use()
+    const held = isHaiku && heldKey === found
+    return { shown: held || (isHaiku && settled), held }
+  }
+
+  /** `orpheusIn` as a hook, looking her membership up if Slack doesn't know it */
+  private useOrpheusIn(channelId: string | undefined): boolean | undefined {
+    const present = this.api.redux.useReduxState((state) =>
+      channelId ? orpheusIn(state, channelId) : false
+    )
+    React.useEffect(() => {
+      if (present === undefined && channelId && !this.lookedUp.has(channelId))
+        this.lookUpOrpheus(channelId)
+    }, [present, channelId])
+    return present
+  }
+
+  /** `orpheusIn` for a send, looking her membership up once if Slack doesn't know it */
+  private async orpheusInNow(channelId: string): Promise<boolean> {
+    const known = () => orpheusIn(this.api.redux.getRawState(), channelId)
+    if (known() === undefined && !this.lookedUp.has(channelId))
+      await this.lookUpOrpheus(channelId)
+    return !!known()
+  }
+
+  private lookUpOrpheus(channelId: string) {
+    this.lookedUp.add(channelId)
+    const lookup = this.api.redux
+      .dispatchThunk('getChannelMembershipInfoForUsers', {
+        channelId,
+        userIds: [ORPHEUS_USER],
+      })
+      .catch((error) => this.log('Could not look up Orpheus', error))
+    return this.api.within(lookup, 5_000, "Slack's membership lookup")
+  }
+
   private async loadDictionary() {
     if (this.loading || Date.now() < this.retryAt) return
     this.loading = true
     try {
       await this.cache.load()
-      this.dictionary = await this.cache.fetch(DICTIONARY_COMMIT, async () => {
+      const dictionary = await this.cache.fetch(DICTIONARY_COMMIT, async () => {
         const response = await this.api.fetch(DICTIONARY_URL, {
           signal: AbortSignal.any([
             this.api.signal,
@@ -97,6 +295,7 @@ export default class HaikuWarning extends TautPlugin<typeof HaikuWarning> {
         }
         return dictionary
       })
+      this.dictionary.set(dictionary)
     } catch (error) {
       if (this.api.signal.aborted) return
       this.log('Could not load dictionary', error)
@@ -105,6 +304,33 @@ export default class HaikuWarning extends TautPlugin<typeof HaikuWarning> {
       this.loading = false
     }
   }
+}
+
+/** whether Orpheus replies in a conversation, undefined until Slack knows if she's in it */
+function orpheusIn(state: any, channelId: string): boolean | undefined {
+  const channel = state?.channels?.[channelId]
+  if (!channel?.is_channel || channel.is_mpim) return false
+  // she joins public channels to reply, and can't join private ones
+  if (!channel.is_private) return true
+  const known = state?.membership?.[channelId]?.[ORPHEUS_USER]
+  return known?.isKnown ? !!known.isMember : undefined
+}
+
+/** identifies a haiku sent from a composer */
+function haikuKey(
+  channelId: string,
+  threadTs: string | undefined,
+  haiku: string[]
+) {
+  return `${channelId}\n${threadTs ?? ''}\n${haiku.join('\n')}`
+}
+
+/** the haiku Orpheus would find in a message */
+function haikuIn(blocks: unknown[], dictionary: string) {
+  const text = blocksToSlackText(blocks)
+  // Orpheus skips messages this long, counted in code points like Ruby
+  if ([...text].length >= 300) return null
+  return findHaiku(text, (word) => dictionaryLookup(dictionary, word))
 }
 
 // port of Orpheus's haiku check (hackclub/orpheus-bot app/lib/haiku_check)
@@ -277,24 +503,133 @@ type RichTextNode = {
   timestamp?: number
   format?: string
   fallback?: string
-  style?: string | Record<string, unknown>
+  style?:
+    | string
+    | {
+        bold?: boolean
+        italic?: boolean
+        strike?: boolean
+        code?: boolean
+      }
   indent?: number
   offset?: number
   elements?: RichTextNode[]
 }
 
-/** Slack escapes these three in message text */
+/** Slack escapes these */
 const escapeText = (text: string) =>
-  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  text
+    .replace(/&(?!amp|lt|gt)/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+/** in order from outermost to innermost, for styles that start and end together */
+const MARKERS = { strike: '~', italic: '_', bold: '*', code: '`' } as const
+type Marker = keyof typeof MARKERS
+
+function markersOf(node: RichTextNode): Marker[] {
+  // Slack never styles emoji or text that's only whitespace
+  if (node.type === 'emoji' || (node.type === 'text' && !node.text?.trim()))
+    return []
+  const style = typeof node.style === 'object' ? node.style : {}
+  return (Object.keys(MARKERS) as Marker[]).filter((marker) => style[marker])
+}
+
+/** each style opens and closes on its own, so markers can overlap like `*a_b*c_` */
+function inlineText(nodes: RichTextNode[]): string {
+  const markers = nodes.map(markersOf)
+  const runLength = (start: number, marker: Marker) => {
+    let end = start
+    while (markers[end]?.includes(marker)) end++
+    return end - start
+  }
+  const write = (list: Marker[]) =>
+    list.map((marker) => MARKERS[marker]).join('')
+  const open: Marker[] = []
+  let result = ''
+  const close = (keep: Marker[]) => {
+    const closing = open.filter((marker) => !keep.includes(marker)).reverse()
+    for (const marker of closing) open.splice(open.indexOf(marker), 1)
+    // closing markers go before trailing whitespace
+    result = result.replace(/\s*$/, (tail) => `${write(closing)}${tail}`)
+  }
+  nodes.forEach((node, i) => {
+    close(markers[i])
+    const opening = markers[i]
+      .filter((marker) => !open.includes(marker))
+      .sort((a, b) => runLength(i, b) - runLength(i, a))
+    open.push(...opening)
+    // opening markers go after leading whitespace
+    result += nodeText(node).replace(
+      /^\s*/,
+      (lead) => `${lead}${write(opening)}`
+    )
+  })
+  close([])
+  return result
+}
+
+/** joins blocks without doubling or dropping the newlines between them */
+function joinSections(sections: string[]): string {
+  return sections.reduce((text, next) => {
+    const separator =
+      text && next && !text.endsWith('\n') && !next.startsWith('\n') ? '\n' : ''
+    return text + separator + next
+  }, '')
+}
+
+function romanNumeral(n: number): string {
+  const numerals = [
+    [1000, 'm'],
+    [900, 'cm'],
+    [500, 'd'],
+    [400, 'cd'],
+    [100, 'c'],
+    [90, 'xc'],
+    [50, 'l'],
+    [40, 'xl'],
+    [10, 'x'],
+    [9, 'ix'],
+    [5, 'v'],
+    [4, 'iv'],
+    [1, 'i'],
+  ] as const
+  let result = ''
+  for (const [value, numeral] of numerals)
+    while (n >= value) {
+      result += numeral
+      n -= value
+    }
+  return result
+}
+
+/** Slack writes the letter as the byte `(96 + n) % 256` and decodes it alone as UTF-8 */
+function listLetter(n: number): string {
+  const byte = (96 + n) % 256
+  const bad = (bits: number) => `BAD+${bits.toString(16).toUpperCase()}`
+  if (byte >= 0x80 && byte <= 0xbf) return bad(byte)
+  if (byte >= 0xc2 && byte <= 0xdf) return bad(byte & 0x1f)
+  if (byte >= 0xe0 && byte <= 0xef) return bad(byte & 0x0f)
+  if (byte >= 0xf0 && byte <= 0xf4) return bad(byte & 0x07)
+  if (byte === 0x0d) return '\n'
+  if (byte >= 0x7f || (byte < 0x20 && (byte < 0x09 || byte > 0x0c))) return ''
+  return escapeText(String.fromCharCode(byte))
+}
+
+/** nested lists cycle through three marker styles */
+function listMarker(list: RichTextNode, i: number): string {
+  const depth = (list.indent ?? 0) % 3
+  if (list.style !== 'ordered') return ['•', '◦', '▪︎'][depth]
+  const n = (list.offset ?? 0) + i + 1
+  if (depth === 0) return `${n}.`
+  if (depth === 1) return `${listLetter(n)}.`
+  return `${romanNumeral(n)}.`
+}
 
 function listText(list: RichTextNode): string {
   const indent = '    '.repeat(list.indent ?? 0)
   return (list.elements ?? [])
-    .map((item, i) => {
-      const marker =
-        list.style === 'ordered' ? `${(list.offset ?? 0) + i + 1}.` : '•'
-      return `${indent}${marker} ${nodeText(item)}`
-    })
+    .map((item, i) => `${indent}${listMarker(list, i)} ${nodeText(item)}`)
     .join('\n')
 }
 
@@ -313,16 +648,21 @@ function nodeText(node: RichTextNode): string {
     case 'emoji':
       return `:${node.name}:${node.skin_tone ? `:skin-tone-${node.skin_tone}:` : ''}`
     case 'date':
-      return `<!date^${node.timestamp}^${node.format}|${escapeText(node.fallback ?? '')}>`
+      return escapeText(
+        `<!date^${node.timestamp}^${node.format}|${node.fallback ?? ''}>`
+      )
+    case 'rich_text':
+    case 'expanded_rich_text':
+      return joinSections((node.elements ?? []).map(nodeText))
     case 'rich_text_list':
       return listText(node)
     case 'rich_text_quote':
-      return nodeText({ elements: node.elements })
+      return inlineText(node.elements ?? [])
         .split('\n')
         .map((line) => `&gt; ${line}`)
         .join('\n')
     case 'rich_text_preformatted':
-      return `\`\`\`${nodeText({ elements: node.elements })}\`\`\``
+      return `\`\`\`${inlineText(node.elements ?? [])}\`\`\``
   }
   // pasted file and canvas links are sent as the file's id
   if (node.file_id) return node.file_id
@@ -331,22 +671,10 @@ function nodeText(node: RichTextNode): string {
     const url = escapeText(node.url)
     return node.text ? `<${url}|${escapeText(node.text)}>` : `<${url}>`
   }
-  const children = node.elements ?? []
-  if (node.type !== 'rich_text') return children.map(nodeText).join('')
-  // a section runs on into the next, the other blocks end their line
-  return children
-    .map((child, i) => {
-      const next = children[i + 1]
-      const ownLine =
-        next &&
-        (child.type !== 'rich_text_section' ||
-          next.type !== 'rich_text_section')
-      return ownLine ? `${nodeText(child)}\n` : nodeText(child)
-    })
-    .join('')
+  return inlineText(node.elements ?? [])
 }
 
 /** recreates the mrkdwn text Slack delivers with a message event */
 function blocksToSlackText(blocks: unknown[]): string {
-  return (blocks as RichTextNode[]).map(nodeText).join('\n')
+  return (blocks as RichTextNode[]).map(nodeText).join(' ')
 }
