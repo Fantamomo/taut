@@ -4,9 +4,9 @@
 import { TautPlugin } from '$taut'
 import {
   getActiveTeam,
-  readLocalConfig,
   type LocalConfig,
   type LocalConfigTeam,
+  readLocalConfig,
 } from '../app/slack/localConfig.ts'
 
 const MARKETPLACE_BASE = 'https://slack.com/marketplace'
@@ -202,7 +202,7 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
       children?: unknown
     }>('AboutPage', (Original) => (props) => {
       const appId = props.appId
-      if (!appId || !appId.startsWith('A')) return <Original {...props} />
+      if (!appId?.startsWith('A')) return <Original {...props} />
 
       // the wrappers are necessary so that a scroll bar is shown
       return (
@@ -397,7 +397,10 @@ export default class InstalledApps extends TautPlugin<typeof InstalledApps> {
     return `slack://app?id=${appId}&tab=more_info`
   }
 
-  private InstalledAppsBlock = (props: { userId?: string; profile?: boolean }) => {
+  private InstalledAppsBlock = (props: {
+    userId?: string
+    profile?: boolean
+  }) => {
     const className = `taut-installed-apps${props.profile ? ' p-r_member_profile_section taut-installed-apps-profile' : ''}`
     const apps = this.useInstalledApps(props.userId)
     if (!apps || apps.length === 0) return null

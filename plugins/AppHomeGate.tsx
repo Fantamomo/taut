@@ -66,13 +66,12 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
       }[]
     }>('StyledChannelTabBar', (Original) => (props) => {
       const channelId = props.channelId
-      if (!channelId || !channelId.startsWith('D'))
-        return <Original {...props} />
+      if (!channelId?.startsWith('D')) return <Original {...props} />
       const tabs = props.tabs
       if (!tabs) return <Original {...props} />
       const appId = tabs.find((tab) => tab.autoClogProps?.appId)?.autoClogProps
         ?.appId
-      if (!appId || !appId.startsWith('A')) return <Original {...props} />
+      if (!appId?.startsWith('A')) return <Original {...props} />
 
       return (
         <>
@@ -328,6 +327,7 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
 
         <div className="taut-app-home-gate__actions">
           <button
+            type="button"
             className="taut-app-home-gate__btn taut-app-home-gate__btn--ghost"
             onClick={() => run((i) => this.dismiss(i))}
           >
@@ -336,12 +336,14 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
 
           <div className="taut-app-home-gate__split" ref={splitRef}>
             <button
+              type="button"
               className="taut-app-home-gate__btn taut-app-home-gate__btn--primary taut-app-home-gate__split-main"
               onClick={() => run((i) => this.approveOnce(i))}
             >
               Approve
             </button>
             <button
+              type="button"
               className="taut-app-home-gate__btn taut-app-home-gate__btn--primary taut-app-home-gate__split-toggle"
               aria-haspopup="menu"
               aria-expanded={menuOpen}
@@ -368,6 +370,7 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
             {menuOpen ? (
               <div className="taut-app-home-gate__menu" role="menu">
                 <button
+                  type="button"
                   className="taut-app-home-gate__menu-item"
                   role="menuitem"
                   onClick={() => run((i) => this.approveOnce(i))}
@@ -376,6 +379,7 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
                   <small>Only for this time</small>
                 </button>
                 <button
+                  type="button"
                   className="taut-app-home-gate__menu-item"
                   role="menuitem"
                   onClick={() => run((i) => this.approveForAWhile(i))}
@@ -384,6 +388,7 @@ export default class AppHomeGate extends TautPlugin<typeof AppHomeGate> {
                   <small>Until the hour is up or Slack reloads</small>
                 </button>
                 <button
+                  type="button"
                   className="taut-app-home-gate__menu-item"
                   role="menuitem"
                   onClick={() => run((i) => this.approveAlways(i))}

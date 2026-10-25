@@ -405,7 +405,7 @@ export default class UserMemberships extends TautPlugin<
       return conversation.user ? (
         <Mrkdwn text={`<@${conversation.user}>${type}`} />
       ) : (
-        <>{`Direct message: ${conversation.id}${type}`}</>
+        `Direct message: ${conversation.id}${type}`
       )
     }
 
@@ -552,8 +552,6 @@ export default class UserMemberships extends TautPlugin<
 
         case 'archived':
           return this.isChannel(conversation) && !!conversation.is_archived
-
-        case 'all':
         default:
           return true
       }
