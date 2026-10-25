@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, terra-submission]
   workflow_dispatch:
     inputs:
       taut:
