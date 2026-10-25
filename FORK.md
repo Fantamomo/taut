@@ -21,4 +21,16 @@ Read the PRs to see what the plugins do.
 
 ## I want them!
 
-Good, it simple, wait for my to update this sentence.
+Good, it simple, you need Taut, download it from [here](https://github.com/jeremy46231/taut).
+
+After successfully downloaded it and logging in. Click in the menu bar on the `Taut` button and select `Change App Source`.
+A menu will open, click into the `App bundle URL` field and paste the URL into it:
+
+```
+https://github.com/Fantamomo/taut/releases/download/latest/taut.js
+```
+
+After that press `Save` and restart Taut, or press `STRG+SHIFT+R`/`CMD+SHIFT+R` to force reload it.
+
+After that you only need to enable the plugins in the `Preferences` menu. Open it. Select `Taut`.  
+And search for the plugins and enable them.
