@@ -34,3 +34,7 @@ After that press `Save` and restart Taut, or press `STRG+SHIFT+R`/`CMD+SHIFT+R` 
 
 After that you only need to enable the plugins in the `Preferences` menu. Open it. Select `Taut`.  
 And search for the plugins and enable them.
+
+The easiest way to check if they works, is to any user profile and scroll down to the bottom of the page. You should see all installed apps, the Hackatime stats, the user memberships.
+
+Now you can enjoy them! (Please leave feedback)
