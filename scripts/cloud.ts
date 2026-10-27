@@ -202,9 +202,9 @@ async function launchChromium(
   const env = { ...process.env }
   if (!env.DISPLAY) env.DISPLAY = `:${ports.display}`
   const profile = path.join(STATE, 'profile')
-  // chromium writes the port it bound here, which tells apart a port another browser took first
-  const activePort = path.join(profile, 'DevToolsActivePort')
-  rmSync(activePort, { force: true })
+  // chromium logs the port it bound, which tells apart a port another browser took first. its DevToolsActivePort file only appears for port 0
+  const log = path.join(STATE, 'chromium.log')
+  const logStart = existsSync(log) ? statSync(log).size : 0
   start(
     'chromium',
     CHROME_BIN,
@@ -221,7 +221,12 @@ async function launchChromium(
     env
   )
   ports.cdp = await until(
-    async () => Number(readFileSync(activePort, 'utf8').split('\n')[0]),
+    async () =>
+      Number(
+        /DevTools listening on ws:\/\/[^/]+:(\d+)\//.exec(
+          readFileSync(log).subarray(logStart).toString()
+        )?.[1]
+      ),
     'Chromium'
   )
   savePorts(ports)

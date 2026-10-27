@@ -9,6 +9,10 @@ Each release is a `## x.y.z` heading, and each change is one bullet:
 - `- **Plugin Name**: Fixed what was broken` for a plugin fix
 - `- What changed` for a change to Taut itself
 
+## 3.3.0
+
+- **Slack Fixes** (new plugin): Fixes small bugs in Slack's UI, starting with the misaligned Halloween sidebar row
+
 ## 3.2.0
 
 - **Quick Join** (new plugin): Join a channel from its right-click menu
