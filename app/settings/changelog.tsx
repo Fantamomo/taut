@@ -101,6 +101,9 @@ export const CHANGELOG_CSS = `
 export function markdownToMrkdwn(text: string): string {
   // code spans are left exactly as written
   return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
     .split(/(`[^`]*`)/)
     .map((part, i) =>
       i % 2
