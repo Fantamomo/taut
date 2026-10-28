@@ -54,6 +54,15 @@ export type TautInstall = {
 
 export type Unsubscribe = () => void
 
+export type TautLoaderSetting = {
+  id: string
+  label: string
+  subtext?: string
+  value: boolean
+  /** saved, but only takes effect after `relaunch` */
+  restartPending?: boolean
+}
+
 /** string key/value store scoped to a namespace */
 export type BlobStore = {
   list(): Promise<string[]>
@@ -103,6 +112,14 @@ export type TautBridge = {
   restartToUpdate?(): void
   /** calls back with the version once `restartToUpdate` would install it (right away if it already would), only offered when `install.canSelfUpdate` */
   onUpdateReady?(cb: (version: string) => void): Unsubscribe
+  /** quits and reopens the app, older loaders and the extensions and userscript leave it out */
+  relaunch?(): void
+  /** older loaders leave it out */
+  readonly loaderSettings?: {
+    list(): Promise<TautLoaderSetting[]>
+    /** true on success */
+    set(id: string, value: boolean): Promise<boolean>
+  }
 
   /** integer version of the bridge API, only goes up */
   readonly bridgeVersion: number
@@ -146,7 +163,7 @@ export type TautBridge = {
     remove(details: { url: string; name: string }): Promise<boolean>
   }
 
-  /** private store for secrets like account tokens, kept out of config.json, stored encrypted with the OS keychain if possible, null if unset */
+  /** private store for secrets like account tokens, kept out of config.json, stored encrypted with the OS keychain if possible, null if unset, rejects if the store can't be read */
   readSecret(key: string): Promise<string | null>
   /** true on success, added in bridgeVersion 2 */
   writeSecret(key: string, value: string): Promise<boolean>

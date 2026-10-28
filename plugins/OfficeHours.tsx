@@ -82,10 +82,7 @@ export default class OfficeHours extends TautPlugin<typeof OfficeHours> {
   }
 
   private running?: Promise<unknown>
-  private state = this.api.storage.store<State>('state', {
-    held: {},
-    handsOff: {},
-  })
+  private legacy = this.api.storage.store<State | null>('state', null)
   private timer?: ReturnType<typeof setInterval>
 
   start() {
@@ -114,14 +111,38 @@ export default class OfficeHours extends TautPlugin<typeof OfficeHours> {
       })
   }
 
+  /** the signed-in account's saved state */
+  private async load() {
+    // a sync read in a poll, the next tick tries again
+    const userId = this.api.members.getCurrentMemberId()
+    if (!userId || !this.api.profile.getStatus()) return
+    const store = this.api.storage.store<State>(`state:${userId}`, {
+      held: {},
+      handsOff: {},
+    })
+    // another tab may have just saved a tick
+    const saved = await store.refresh()
+    const state = { held: { ...saved.held }, handsOff: { ...saved.handsOff } }
+
+    // migrate legacy state if it exists
+    await this.legacy.ready
+    const legacy = this.legacy.get() && (await this.legacy.refresh())
+    if (legacy) {
+      Object.assign(state.held, legacy.held)
+      Object.assign(state.handsOff, legacy.handsOff)
+      await store.set(state)
+      await this.api.storage.delete('state')
+    }
+    return { store, state }
+  }
+
   /** works out what should be set from the schedule and the saved state */
   private async tick() {
     const now = Date.now()
     const { profile } = this.api
-    if (this.api.signal.aborted || !profile.getStatus()) return
-    // another tab may have just saved a tick
-    const saved = await this.state.refresh()
-    const state = { held: { ...saved.held }, handsOff: { ...saved.handsOff } }
+    const loaded = !this.api.signal.aborted && (await this.load())
+    if (!loaded) return
+    const { store, state } = loaded
     const timeZone = profile.getTimeZone()
     for (const kind of ['outOfOffice', 'invisible'] as const) {
       const until = this.api.scheduleEnd(this.config[kind], timeZone)
@@ -152,7 +173,7 @@ export default class OfficeHours extends TautPlugin<typeof OfficeHours> {
       ) {
         state.held[kind] = await this.apply(kind, until, held)
       } else continue
-      await this.state.set({
+      await store.set({
         held: { ...state.held },
         handsOff: { ...state.handsOff },
       })

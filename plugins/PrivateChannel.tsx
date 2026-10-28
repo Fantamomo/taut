@@ -1,6 +1,6 @@
 // Lets you see and mention private channels you aren't in (uses the flaron index)
 
-import { opt, TautPlugin } from '$taut'
+import { type MenuTemplateItem, opt, TautPlugin } from '$taut'
 
 const FLARON = 'https://flaron.halceon.dev'
 const EXPORT_TTL = 6 * 60 * 60 * 1000
@@ -8,6 +8,8 @@ const EXPORT_TTL = 6 * 60 * 60 * 1000
 const SHADOW_TTL = 24 * 60 * 60 * 1000
 // most index entries a single autocomplete query may check against flaron
 const MAX_QUERY_LOOKUPS = 5
+const NAME_LOOKUP_MIN_LENGTH = 3
+const NAME_LOOKUP_DEBOUNCE = 400
 const CHANNEL_ID = /^[CG][A-Z0-9]{8,}$/
 
 type ShadowRecord = { name: string; previousNames?: string[] }
@@ -54,20 +56,29 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
   >()
   /** names we've already tried to resolve from flaron */
   private resolvedNames = new Set<string>()
+  /** the newest autocomplete query, so an older one's name lookup can drop out */
+  private nameQuery = 0
   /** channel objects we built, so we can tell our own reads from Slack's */
   private synthesized = new WeakSet<object>()
   private exportTs = 0
   private saveTimer: ReturnType<typeof setTimeout> | null = null
   private snapshot = this.api.storage.store<Snapshot | null>('channels', null)
 
+  /** channel id -> local name */
+  private localNames = this.api.storage.store<Record<string, string>>(
+    'localNames',
+    {}
+  )
+
   private get adminKey(): string {
     return this.config.adminKey.trim()
   }
 
   async start() {
-    await this.snapshot.ready
+    await Promise.all([this.snapshot.ready, this.localNames.ready])
     if (this.api.signal.aborted) return
     this.loadSnapshot(this.snapshot.get())
+    this.localNames.subscribe(() => this.api.redux.refresh())
 
     this.api.redux.patchSlice<{
       name?: string
@@ -84,12 +95,16 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
           (channel && this.index.get(id)) ??
           // the id stands in for the name here, so you at least see the id and not "unknown-channel"
           (id === this.unnamedId ? { name: id } : undefined)
-        if (!rec) return channel
+        // a local name only renames something existing, it never adds an entry
+        // this is fine bc slack will fetch unknown channels and store a stub, we rename it
+        const name =
+          (channel || rec ? this.localNames.get()[id] : undefined) || rec?.name
+        if (!name) return channel
         const shadow = this.api.channels.makeChannelObject({
           id,
-          name: rec.name,
+          name,
           isPrivate: true,
-          previousNames: rec.previousNames,
+          previousNames: rec?.previousNames,
         })
         this.synthesized.add(shadow)
         return shadow
@@ -321,7 +336,7 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
   }
 
   /** shadow whatever flaron has for `query` that Slack couldn't find */
-  private async resolveByName(query: string): Promise<boolean> {
+  private async resolveByName(query: string, seq: number): Promise<boolean> {
     const name = query.trim().toLowerCase()
     if (!name) return false
     const candidates = this.candidatesFor(name)
@@ -334,12 +349,15 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
         return true
       }
     }
-    return this.lookupName(name)
+    return this.lookupName(name, seq)
   }
 
-  /** resolve a complete channel name -> id from flaron and save it as a shadow */
-  private async lookupName(name: string): Promise<boolean> {
-    if (this.resolvedNames.has(name)) return false
+  /** resolve a complete channel name -> id from flaron and save it as a shadow, unless query `seq` is superseded */
+  private async lookupName(name: string, seq: number): Promise<boolean> {
+    if (name.length < NAME_LOOKUP_MIN_LENGTH || this.resolvedNames.has(name))
+      return false
+    await new Promise((resolve) => setTimeout(resolve, NAME_LOOKUP_DEBOUNCE))
+    if (seq !== this.nameQuery || this.api.signal.aborted) return false
     this.resolvedNames.add(name)
     try {
       const res = await fetch(`${FLARON}/cname/${encodeURIComponent(name)}`, {
@@ -392,6 +410,7 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
         const q = raw.toLowerCase()
         if (!q) return original(params)
         const typedId = CHANNEL_ID.test(raw) ? raw : undefined
+        const seq = ++this.nameQuery
         return (...args: unknown[]) => {
           const result = original(params)(...args)
           return Promise.resolve(result).then((local) => {
@@ -411,7 +430,7 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
                 return typeof name === 'string' && name.toLowerCase() === q
               })
               if (covered) return base
-              const added = await this.resolveByName(q)
+              const added = await this.resolveByName(q, seq)
               if (!added) return base
               // we just added to the store, so re-run the original thunk to let slack's logic find it
               const rerun = await original(params)(...args)
@@ -543,7 +562,80 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
     )
   }
 
+  /** a mention of a channel Slack has no name for, right-click to name it locally */
+  private UnnamedChannel = ({ id, name }: { id: string; name: string }) => {
+    const { ContextMenu } = this.api.menu
+    const { SvgIcon } = this.api.elements
+    const local = this.localNames.use()[id]
+    const template: MenuTemplateItem[] = [
+      {
+        key: 'taut-private-channel__name',
+        label: local ? 'Edit local name...' : 'Set local name...',
+        click: () => this.openLocalNameModal(id),
+      },
+    ]
+    return (
+      <ContextMenu template={template}>
+        <button
+          type="button"
+          className="c-button-unstyled c-missing_channel--private"
+        >
+          <SvgIcon inline={true} name="lock" />
+          {name}
+        </button>
+      </ContextMenu>
+    )
+  }
+
+  private openLocalNameModal(id: string) {
+    const { Label, TextInput } = this.api.modal
+    const valueRef = { current: this.localNames.get()[id] ?? '' }
+    const placeholder =
+      this.shadows.get(id)?.name || this.index.get(id)?.name || id
+
+    const NameField = () => {
+      const [value, setValue] = React.useState(valueRef.current)
+      return (
+        <>
+          <Label text="Name" htmlFor="taut-private-channel__input" optional />
+          <TextInput
+            id="taut-private-channel__input"
+            value={value}
+            onChange={(next) => {
+              setValue(next)
+              valueRef.current = next
+            }}
+            placeholder={placeholder}
+            hintText="Only you see it. Leave blank to remove it."
+            autoFocus
+          />
+        </>
+      )
+    }
+
+    this.api.modal.openModal({
+      title: 'Set local channel name',
+      submitText: 'Save',
+      cancelText: 'Cancel',
+      body: <NameField />,
+      onSubmit: () => this.setLocalName(id, valueRef.current),
+    })
+  }
+
+  private setLocalName(id: string, name: string) {
+    const trimmed = name.trim()
+    this.localNames
+      .update((names) => {
+        const next = { ...names }
+        if (trimmed) next[id] = trimmed
+        else delete next[id]
+        return next
+      })
+      .catch((err) => this.log('Could not save', err))
+  }
+
   private patchChannelRendering() {
+    const UnnamedChannel = this.UnnamedChannel
     this.api.patchComponent<{
       id?: string
       channelName?: string
@@ -552,15 +644,20 @@ export default class PrivateChannel extends TautPlugin<typeof PrivateChannel> {
       isNonExistent?: boolean
       isUnknown?: boolean
     }>('BaseMrkdwnChannel', (Original) => (props) => {
+      const id = props.id
+      // the entry itself, to tell the ones we built from Slack's
+      const channel = this.api.redux.useReduxState<
+        | { name?: string; isNonExistent?: boolean; isUnknown?: boolean }
+        | undefined
+      >((s) => (id ? s.channels?.[id] : undefined))
+      if (!id) return <Original {...props} />
+      if (channel && this.synthesized.has(channel))
+        return <UnnamedChannel id={id} name={channel.name || id} />
       // Slack's stubs carry a placeholder name like "unknown-channel"
-      const stub = props.isNonExistent || props.isUnknown
-      if ((stub || (props.isPrivate && !props.isMember)) && props.id)
-        return this.renderMissing(
-          (!stub && props.channelName) ||
-            this.shadows.get(props.id)?.name ||
-            props.id
-        )
-
+      if (props.isNonExistent || props.isUnknown)
+        return <UnnamedChannel id={id} name={id} />
+      if (props.isPrivate && !props.isMember)
+        return this.renderMissing(props.channelName || id)
       return <Original {...props} />
     })
 

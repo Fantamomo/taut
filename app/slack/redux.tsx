@@ -41,6 +41,43 @@ function wrapGetState(store: SlackStore): void {
   store.getState = wrapped
 }
 
+const batchedListeners = new Set<() => void>()
+let batchedNotify: number | undefined
+
+function wrapSubscribe(store: SlackStore & { subscribeImmediate?: unknown }) {
+  const realSubscribe = store.subscribe
+  if (
+    (realSubscribe as any).__tautWrapped ||
+    !store.subscribeImmediate ||
+    store.subscribeImmediate === realSubscribe
+  )
+    return
+  const wrapped = (listener: () => void) => {
+    const entry = () => listener()
+    batchedListeners.add(entry)
+    const unsubscribe = realSubscribe(listener)
+    return () => {
+      batchedListeners.delete(entry)
+      unsubscribe()
+    }
+  }
+  wrapped.__tautWrapped = true
+  store.subscribe = wrapped
+}
+
+/** calls the batched listeners once in the next frame */
+function notifyBatchedListeners(): void {
+  if (batchedNotify !== undefined || !batchedListeners.size) return
+  batchedNotify = requestAnimationFrame(() => {
+    batchedNotify = undefined
+    for (const listener of batchedListeners) {
+      try {
+        listener()
+      } catch {}
+    }
+  })
+}
+
 // Slack makes several stores and the rendered one is only known once its <Provider> mounts
 const lookingForStore = new Set<() => void>()
 let resolveStore: (store: SlackStore) => void
@@ -49,12 +86,13 @@ const storePromise = new Promise<SlackStore>((resolve) => {
 })
 
 patchFunctionExport(
-  byName('createStore'),
+  (exp) => byName('createStore')(exp) || byName('legacy_createStore')(exp),
   (originalCreateStore) =>
     (...args) => {
       const store = originalCreateStore(...args)
       try {
         wrapGetState(store)
+        wrapSubscribe(store)
         if (!cachedStore) lookingForStore.add(store.subscribe(getReduxStore))
       } catch {}
       return store
@@ -204,6 +242,7 @@ export function refreshState(): void {
   try {
     getReduxStore()?.dispatch({ type: '@@taut/PATCH_STATE' })
   } catch {}
+  notifyBatchedListeners()
   for (const notify of patchListeners) {
     try {
       notify()
@@ -586,7 +625,7 @@ export const reduxPromise = (async () => {
     return React.useSyncExternalStore(subscribe, getSnapshot)
   }
 
-  // Slack's connect memoizes off the raw state, so a component reading patched state needs this to rerender
+  // rerenders on every refresh, for render code that reads patched data outside a store subscription
   function usePatchVersion(): number {
     return React.useSyncExternalStore(subscribePatches, getPatchVersion)
   }

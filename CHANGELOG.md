@@ -9,6 +9,18 @@ Each release is a `## x.y.z` heading, and each change is one bullet:
 - `- **Plugin Name**: Fixed what was broken` for a plugin fix
 - `- What changed` for a change to Taut itself
 
+## 3.4.0
+
+- **Private Channel**: Right-click a hidden channel's mention to give it a local name
+- **Last Seen**: Better remembers when people were last seen, follows Slack's limit even with several tabs open
+- **Account Switcher**: Checks an account is still signed in before switching to it, and shows why switching or adding failed
+- **Office Hours**: Fixed its state carrying over between accounts
+- **Censorship**: Fixed &, < and >, emoji in link text, and word changes show without a reload
+- **Show Real User**: Add new supported bots
+- **Show Sending Bot**: Fixed the badge in Activity
+- Fixed plugins, like Censorship and Private Channel, doing nothing after a Slack update
+- Desktop settings in Advanced
+
 ## 3.3.0
 
 - **Slack Fixes** (new plugin): Fixes small bugs in Slack's UI, starting with the misaligned Halloween sidebar row
@@ -27,7 +39,7 @@ Each release is a `## x.y.z` heading, and each change is one bullet:
 - **Haiku Warning**: Choose a banner, a pop-up, or both, the icon is the Orpheus emoji, and the banner no longer flashes while typing
 - **Custom Name Recording**: Now converts non-MP3 files to MP3 for Slack
 - **Copy Reacted**: Fixed copying more than 50 people
-- **Anonymize Filenames**: Fixed in pop-out windows 
+- **Anonymize Filenames**: Fixed in pop-out windows
 - **Show Sending Bot**: Fixed the app badge missing on specific messages in search
 
 ## 3.1.2

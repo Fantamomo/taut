@@ -2,6 +2,7 @@ import type { TautCookie } from '../../shared/TautBridge'
 import type { NormalizedBridge } from '../bridgeCompat'
 import {
   getActiveTeam,
+  getActiveTeamId,
   type LocalConfigTeam,
   readLocalConfig,
 } from '../slack/localConfig'
@@ -63,16 +64,30 @@ export class AccountSwitcher {
     this.supported = this.cookies != null
   }
 
+  /** throws when the saved accounts can't be read, so nothing writes over them */
   private async load(): Promise<Record<string, StoredAccount>> {
+    let accounts: unknown
     try {
-      return JSON.parse((await this.bridge.readSecret(SECRET_KEY)) || '{}')
-    } catch {
-      return {}
+      accounts = JSON.parse((await this.bridge.readSecret(SECRET_KEY)) || '{}')
+    } catch (cause) {
+      throw new Error('Saved accounts are unreadable', { cause })
     }
+    if (!accounts || typeof accounts !== 'object')
+      throw new Error('Saved accounts are unreadable')
+    return accounts as Record<string, StoredAccount>
   }
 
-  private save(accounts: Record<string, StoredAccount>): Promise<boolean> {
-    return this.bridge.writeSecret(SECRET_KEY, JSON.stringify(accounts))
+  /** applies `edit` to the saved accounts under a lock shared with other tabs */
+  private async change(
+    edit: (accounts: Record<string, StoredAccount>) => void
+  ): Promise<void> {
+    await navigator.locks.request(`taut:secret:${SECRET_KEY}`, async () => {
+      const accounts = await this.load()
+      edit(accounts)
+      const json = JSON.stringify(accounts)
+      if (!(await this.bridge.writeSecret(SECRET_KEY, json)))
+        throw new Error('Failed to save accounts')
+    })
   }
 
   async list(): Promise<StoredAccount[]> {
@@ -81,30 +96,34 @@ export class AccountSwitcher {
 
   /** removes a saved account without touching the live session */
   async forget(userId: string): Promise<void> {
-    const accounts = await this.load()
-    delete accounts[userId]
-    await this.save(accounts)
+    await this.change((accounts) => {
+      delete accounts[userId]
+    })
   }
 
   /** drops saved accounts that fail auth.test, ones that can't be checked are in neither list */
   async validate(): Promise<{ kept: string[]; dropped: string[] }> {
-    const accounts = await this.load()
     const checks = await Promise.all(
-      Object.values(accounts).map(async (account) => ({
-        userId: account.userId,
+      Object.values(await this.load()).map(async (account) => ({
+        account,
         status: await this.checkAuth(account),
       }))
     )
-    const dropped = checks
-      .filter((c) => c.status === 'invalid')
-      .map((c) => c.userId)
+    const dropped = checks.filter((c) => c.status === 'invalid')
     if (dropped.length) {
-      for (const id of dropped) delete accounts[id]
-      await this.save(accounts)
+      await this.change((accounts) => {
+        for (const { account } of dropped) {
+          // unless a capture saved a new session since the check
+          if (accounts[account.userId]?.xoxd === account.xoxd)
+            delete accounts[account.userId]
+        }
+      })
     }
     return {
-      kept: checks.filter((c) => c.status === 'valid').map((c) => c.userId),
-      dropped,
+      kept: checks
+        .filter((c) => c.status === 'valid')
+        .map((c) => c.account.userId),
+      dropped: dropped.map((c) => c.account.userId),
     }
   }
 
@@ -134,7 +153,7 @@ export class AccountSwitcher {
   async captureCurrent(): Promise<StoredAccount | null> {
     if (!this.supported || !this.cookies) return null
     const localConfig = readLocalConfig()
-    const teamId = localConfig.lastActiveTeamId
+    const teamId = getActiveTeamId(localConfig)
     const team = getActiveTeam(localConfig)
     if (!teamId || !team?.token || !team.user_id) return null
 
@@ -148,19 +167,25 @@ export class AccountSwitcher {
       xoxd: sessionCookie.value,
       updatedAt: Date.now(),
     }
-    const accounts = await this.load()
-    accounts[team.user_id] = account
-    await this.save(accounts)
+    await this.change((accounts) => {
+      accounts[account.userId] = account
+    })
     return account
   }
 
-  /** works while neither account's login has revoked the other's session */
+  /** checks the saved session with auth.test first, and throws without touching the live session if it fails */
   async switchTo(userId: string): Promise<void> {
     if (!this.supported || !this.cookies)
       throw new Error('Account switching is not supported by this loader')
     const account = (await this.load())[userId]
     if (!account?.team?.token)
       throw new Error(`No usable saved account for ${userId}`)
+
+    const status = await this.checkAuth(account)
+    if (status === 'invalid')
+      throw new Error('That account is signed out, add it again')
+    if (status === 'unknown')
+      throw new Error("Couldn't reach Slack to check that account")
 
     await this.captureCurrent()
 
@@ -190,7 +215,7 @@ export class AccountSwitcher {
 
     const saved = await this.captureCurrent()
     const localConfig = readLocalConfig()
-    const teamId = localConfig.lastActiveTeamId
+    const teamId = getActiveTeamId(localConfig)
     const domain = saved?.team.domain ?? getActiveTeam(localConfig)?.domain
 
     // Slack's per-session cookies, all must go for a new account to log in

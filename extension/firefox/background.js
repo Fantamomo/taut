@@ -19,6 +19,8 @@ import { serializeResponse } from '../shared/fetchBody.js'
         buffer += decoder.decode(event.data, { stream: true })
       }
 
+      // parallel to desktop/src/preload.ts, extension/chrome/content.js, and userscript/main.ts
+
       const rewrite = async () => {
         buffer += decoder.decode()
 
@@ -40,10 +42,10 @@ import { serializeResponse } from '../shared/fetchBody.js'
           s.remove()
         })
 
-        // bridge-setup.js defines window.TautBridge, so it goes before taut.js
         const scriptError = (/** @type {string} */ url) =>
           `alert('[Taut] Failed to load a script.\\n\\nURL: ' + ${JSON.stringify(url)} + '\\n\\n${url.includes('://localhost') ? 'Make sure your server is running.' : 'Ask in #taut for help.'}')`
 
+        // bridge-setup.js defines window.TautBridge, so it goes before taut.js
         const bridgeScript = doc.createElement('script')
         bridgeScript.id = 'taut-bridge'
         bridgeScript.src = browser.runtime.getURL('bridge-setup.js')
@@ -68,6 +70,10 @@ import { serializeResponse } from '../shared/fetchBody.js'
           encoder.encode(`<!DOCTYPE html>${doc.documentElement.outerHTML}`)
         )
         filter.close()
+
+        console.log(
+          '[Taut] Document reconstructed with CSP removed and taut.js injected'
+        )
       }
 
       filter.onstop = () =>

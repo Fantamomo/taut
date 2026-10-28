@@ -248,6 +248,19 @@ export type MenuTriggerProps = {
   children?: React.ReactNode
 }
 
+/** opens a menu at the cursor on right-click, Slack's context menus */
+export type ContextMenuTriggerProps = {
+  getTemplate: () => MenuTemplateItem[]
+  /** false to also show it outside the desktop app */
+  desktopAppOnly?: boolean
+  /** true draws Slack's menu in the desktop app too, not a native one */
+  showSlackKitContextMenuOnDesktop?: boolean
+  width?: string
+  menuAriaLabel?: string
+  isDisabled?: boolean
+  children?: React.ReactNode
+}
+
 export type FormTextInputProps = {
   id?: string
   name?: string
@@ -387,6 +400,9 @@ export const elementsAPIPromise = (async () => {
     Blocks: lazyComponent<BlocksProps>('Blocks'),
     MenuTrigger: lazyComponent<MenuTriggerProps>('MenuTrigger'),
     MenuFromTemplate: lazyComponent<MenuFromTemplateProps>('MenuFromTemplate'),
+    ContextMenuTrigger: lazyComponent<ContextMenuTriggerProps>(
+      'withKeyboardFocusContext(ContextMenuTrigger)'
+    ),
     TimePicker: lazyComponent<TimePickerProps>('TimePicker'),
     EmojiMenuTrigger: lazyComponent<EmojiMenuTriggerProps>(
       'Connect(EmojiMenuTrigger)'

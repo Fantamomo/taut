@@ -91,6 +91,8 @@ async function restoreFromMirror() {
   })
 }
 
+// parallel to desktop/src/preload.ts, extension/firefox/background.js, extension/firefox/content.js, and userscript/main.ts
+
 /** @param {Response} response */
 async function readPage(response) {
   const type = response.headers.get('content-type') ?? ''
@@ -151,10 +153,10 @@ function reloadWithoutTaut(error) {
     s.remove()
   })
 
-  // bridge-setup.js defines window.TautBridge, so it goes before taut.js
   const scriptError = (/** @type {string} */ url) =>
     `alert('[Taut] Failed to load a script.\\n\\nURL: ' + ${JSON.stringify(url)} + '\\n\\n${url.includes('://localhost') ? 'Make sure your server is running.' : 'Ask in #taut for help.'}')`
 
+  // bridge-setup.js defines window.TautBridge, so it goes before taut.js
   const bridgeScript = doc.createElement('script')
   bridgeScript.id = 'taut-bridge'
   bridgeScript.src = chrome.runtime.getURL('bridge-setup.js')
@@ -179,6 +181,10 @@ function reloadWithoutTaut(error) {
   document.write(`<!DOCTYPE html>${doc.documentElement.outerHTML}`)
   document.close()
 
+  console.log(
+    '[Taut] Document reconstructed with CSP removed and taut.js injected'
+  )
+
   // document.open() erases the window's listeners, so these go after it
   window.addEventListener('message', async (event) => {
     if (event.source !== window) return
@@ -191,6 +197,7 @@ function reloadWithoutTaut(error) {
         method: msg.method,
         args: msg.args,
       })
+      // chrome's runtime messages are JSON, so background.js sends fetch bodies as base64
       if (msg.method === 'fetch' && result?.ok)
         result = {
           ok: true,
@@ -211,22 +218,22 @@ function reloadWithoutTaut(error) {
   })
 
   // storage changes from this or another tab go to the page as events
-  const USER_PLUGIN_PREFIX = 'taut-user-plugin:'
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return
     for (const [key, { newValue }] of Object.entries(changes)) {
-      if (key.startsWith(USER_PLUGIN_PREFIX)) {
+      if (key.startsWith('taut-user-plugin:')) {
         window.postMessage({
           __taut: true,
           kind: 'event',
           name: 'userPlugin.changed',
           payload: {
-            id: key.slice(USER_PLUGIN_PREFIX.length),
+            id: key.slice('taut-user-plugin:'.length),
             code: newValue ?? null,
           },
         })
         continue
       }
+      // bridge-setup.js reads only these, so plugin writes stay out of the page
       if (key !== 'taut-config' && key !== 'taut-user-css') continue
       window.postMessage({
         __taut: true,

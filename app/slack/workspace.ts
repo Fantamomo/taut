@@ -1,4 +1,4 @@
-import { readLocalConfig } from './localConfig'
+import { readLocalConfig, urlTeamId } from './localConfig'
 import { getRawState, subscribeStore } from './redux'
 
 /** the Hack Club enterprise grid and the workspace inside it */
@@ -11,10 +11,6 @@ type SelfTeamIds = {
 }
 
 const selfTeamIds = (): SelfTeamIds | undefined => getRawState()?.selfTeamIds
-
-/** the team in `/client/<id>/...`, which is the one this page booted into */
-const urlTeamId = (): string | undefined =>
-  /^\/client\/([TE][A-Z0-9]+)/.exec(location.pathname)?.[1]
 
 let cachedFor: SelfTeamIds | undefined
 let cachedResult = false

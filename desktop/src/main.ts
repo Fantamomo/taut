@@ -19,6 +19,7 @@ import {
 import { installAppImageDesktopEntry } from './appImage.js'
 import { startAutoUpdate } from './autoUpdate.js'
 import { setupBridge } from './bridge.js'
+import { recordLaunchSettings } from './loaderSettings.js'
 import { applyPatches, setOpenOptionsWindow } from './patch.js'
 import { configDir } from './paths.js'
 import {
@@ -52,6 +53,7 @@ const realResourcesPath = process.resourcesPath
 const temporary = process.env.TAUT_TEMPORARY === '1'
 
 await loadPrefs()
+recordLaunchSettings()
 
 if (__TAUT_EMBEDDED__) {
   protocol.registerSchemesAsPrivileged([

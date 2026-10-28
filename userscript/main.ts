@@ -15,6 +15,8 @@ const OFFICIAL_URL = 'https://taut.jer.app/taut.js'
 const DEFAULT_URL = __TAUT_EMBEDDED__ ? '<embedded>' : OFFICIAL_URL
 const OPTIONS_URL = 'https://taut.jer.app/options'
 
+// parallel to desktop/src/preload.ts, extension/chrome/content.js, and extension/firefox/background.js
+
 async function readPage(response: Response) {
   const type = response.headers.get('content-type') ?? ''
   const sameOrigin = new URL(response.url).origin === location.origin
@@ -74,15 +76,12 @@ if (location.href.startsWith(OPTIONS_URL)) {
     document.close()
 
     const tautUrl = GM_getValue('tautUrl', DEFAULT_URL)
-    const useEmbedded = __TAUT_EMBEDDED__ && tautUrl === '<embedded>'
-
     const html = await fetch(location.href).then(readPage)
-
     const doc = new DOMParser().parseFromString(html, 'text/html')
     doc.querySelector('meta[http-equiv="Content-Security-Policy"]')?.remove()
 
     const scripts = Array.from(doc.querySelectorAll('script')).map((s) => ({
-      src: (s as HTMLScriptElement).src,
+      src: s.src,
       textContent: s.textContent,
       type: s.getAttribute('type'),
     }))
@@ -90,16 +89,17 @@ if (location.href.startsWith(OPTIONS_URL)) {
       s.remove()
     })
 
+    const scriptError = (url: string) =>
+      `alert('[Taut] Failed to load a script.\\n\\nURL: ' + ${JSON.stringify(url)} + '\\n\\n${url.includes('://localhost') ? 'Make sure your server is running.' : 'Ask in #taut for help.'}')`
+
     const tautScript = doc.createElement('script')
     tautScript.id = 'taut-app'
-    if (useEmbedded) {
+    if (__TAUT_EMBEDDED__ && tautUrl === '<embedded>') {
       tautScript.textContent = __TAUT_APP_JS__
     } else {
-      const resolvedUrl = tautUrl === '<embedded>' ? OFFICIAL_URL : tautUrl
-      const scriptError = (url: string) =>
-        `alert('[Taut] Failed to load a script.\\n\\nURL: ' + ${JSON.stringify(url)} + '\\n\\n${url.includes('://localhost') ? 'Make sure your server is running.' : 'Ask in #taut for help.'}')`
-      tautScript.src = resolvedUrl
-      tautScript.setAttribute('onerror', scriptError(resolvedUrl))
+      // '<embedded>' saved by an embedded copy means the official url in one without taut.js
+      tautScript.src = tautUrl === '<embedded>' ? OFFICIAL_URL : tautUrl
+      tautScript.setAttribute('onerror', scriptError(tautScript.src))
     }
     doc.head.appendChild(tautScript)
 

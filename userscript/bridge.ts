@@ -1,11 +1,6 @@
 // Taut userscript bridge: TautBridge on GM_* APIs
 
-import type {
-  BlobStore,
-  TautBridge,
-  TautCookie,
-  Unsubscribe,
-} from '../shared/TautBridge'
+import type { BlobStore, TautBridge, TautCookie } from '../shared/TautBridge'
 import { defaultUserCss } from '../shared/userCss'
 
 declare const __TAUT_LOADER_VERSION__: string
@@ -176,44 +171,33 @@ const cookies: TautBridge['cookies'] = gmCookie
     }
   : null
 
+// parallel to desktop/src/preload.ts and extension/shared/bridge-setup.template.js
+
 export const userscriptBridge: TautBridge = {
-  loader: 'userscript' as const,
+  loader: 'userscript',
   loaderVersion: __TAUT_LOADER_VERSION__,
   bridgeVersion: 3,
   embedded: __TAUT_EMBEDDED__,
+  PATHS: null,
 
   cookies,
 
-  async readSecret(key: string): Promise<string | null> {
-    return secretsBlob.read(key)
-  },
-
-  async writeSecret(key: string, value: string): Promise<boolean> {
-    return secretsBlob.write(key, value)
-  },
-
-  async deleteSecret(key: string): Promise<boolean> {
-    return secretsBlob.delete(key)
-  },
+  readSecret: (key) => secretsBlob.read(key),
+  writeSecret: (key, value) => secretsBlob.write(key, value),
+  deleteSecret: (key) => secretsBlob.delete(key),
 
   userPlugins: {
-    async list() {
-      return Object.keys(readUserPlugins())
-    },
-    async read(id) {
-      return readUserPlugins()[id] ?? null
-    },
-    async write(id, code) {
-      return updateUserPlugins((plugins) => {
+    list: async () => Object.keys(readUserPlugins()),
+    read: async (id) => readUserPlugins()[id] ?? null,
+    write: (id, code) =>
+      updateUserPlugins((plugins) => {
         plugins[id] = code
-      })
-    },
-    async delete(id) {
-      return updateUserPlugins((plugins) => {
+      }),
+    delete: (id) =>
+      updateUserPlugins((plugins) => {
         delete plugins[id]
-      })
-    },
-    onChange(cb): Unsubscribe {
+      }),
+    onChange(cb) {
       const listenerId = GM_addValueChangeListener(
         'taut-user-plugins',
         (_key, oldValue, newValue, remote) => {
@@ -235,25 +219,14 @@ export const userscriptBridge: TautBridge = {
 
   blobStore: makeBlobStore,
 
-  warnOutdated() {
-    alert(
-      '[Taut] Your Taut userscript is outdated. Please update it from https://taut.jer.app/taut.user.js'
-    )
-  },
-
-  PATHS: null,
-
-  async start(): Promise<void> {
+  async start() {
     if (!GM_getValue('taut-user-css')) {
       GM_setValue('taut-user-css', defaultUserCss)
     }
   },
 
-  async readConfigText(): Promise<string> {
-    return GM_getValue('taut-config', '') as string
-  },
-
-  async writeConfigText(text: string): Promise<boolean> {
+  readConfigText: async () => GM_getValue('taut-config', '') as string,
+  async writeConfigText(text) {
     try {
       GM_setValue('taut-config', text)
       return true
@@ -262,7 +235,7 @@ export const userscriptBridge: TautBridge = {
     }
   },
 
-  onConfigTextChange(cb: (text: string) => void): Unsubscribe {
+  onConfigTextChange(cb) {
     const listenerId = GM_addValueChangeListener(
       'taut-config',
       (_key, _oldValue, newValue, remote) => {
@@ -272,11 +245,9 @@ export const userscriptBridge: TautBridge = {
     return () => GM_removeValueChangeListener(listenerId)
   },
 
-  async readUserCss(): Promise<string> {
-    return GM_getValue('taut-user-css', defaultUserCss) as string
-  },
-
-  async writeUserCss(text: string): Promise<boolean> {
+  readUserCss: async () =>
+    GM_getValue('taut-user-css', defaultUserCss) as string,
+  async writeUserCss(text) {
     try {
       GM_setValue('taut-user-css', text)
       return true
@@ -285,7 +256,7 @@ export const userscriptBridge: TautBridge = {
     }
   },
 
-  onUserCssChange(cb: (css: string) => void): Unsubscribe {
+  onUserCssChange(cb) {
     const listenerId = GM_addValueChangeListener(
       'taut-user-css',
       (_key, _oldValue, newValue, remote) => {
@@ -295,13 +266,13 @@ export const userscriptBridge: TautBridge = {
     return () => GM_removeValueChangeListener(listenerId)
   },
 
-  fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  fetch(input, init) {
     const url =
       typeof input === 'string'
         ? input
         : input instanceof URL
           ? input.href
-          : (input as Request).url
+          : input.url
     const headers: Record<string, string> = {}
     if (init?.headers) {
       if (init.headers instanceof Headers) {
@@ -359,5 +330,11 @@ export const userscriptBridge: TautBridge = {
         },
       })
     })
+  },
+
+  warnOutdated() {
+    alert(
+      '[Taut] Your Taut userscript is outdated. Please update it from https://taut.jer.app/taut.user.js'
+    )
   },
 }

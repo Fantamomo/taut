@@ -32,6 +32,7 @@ const RELAY_BOTS: Record<string, (msg: RelayedMessage) => unknown> = {
   // fraudpheus
   B091HC53AR2: (msg) => msg.metadata?.event_payload?.source_user_id,
   // nemo
+  B0BK89Z1E3H: (msg) => msg.metadata?.event_payload?.source_user_id,
   B0BQFDMCL0H: (msg) => msg.metadata?.event_payload?.source_user_id, // dev
   // forge
   B0APKS1DZAQ: (msg) => msg.metadata?.event_payload?.source_user_id,
@@ -39,6 +40,8 @@ const RELAY_BOTS: Record<string, (msg: RelayedMessage) => unknown> = {
   B0AJHVBLHUN: (msg) => msg.metadata?.event_payload?.source_user_id,
   // heidi the helper (nephthys)
   B0BTRCXG41E: (msg) => msg.metadata?.event_payload?.source_user_id,
+  // Ben Dixon
+  B0CCSENECFJ: (msg) => msg.metadata?.event_payload?.source_user_id,
 }
 
 export default class ShowRealUser extends TautPlugin<typeof ShowRealUser> {

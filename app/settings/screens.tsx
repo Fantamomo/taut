@@ -1,6 +1,9 @@
 // Taut Settings: the Appearance, Advanced and About screens
 
-import type { TautInstallType } from '../../shared/TautBridge'
+import type {
+  TautInstallType,
+  TautLoaderSetting,
+} from '../../shared/TautBridge'
 import type { NormalizedBridge } from '../bridgeCompat'
 import { tautVersion } from '../bundledData'
 import { checkConfig, configText } from '../configStore'
@@ -97,6 +100,59 @@ export function AppearanceScreen({
   )
 }
 
+/** settings from the loader, hidden when it has none */
+function LoaderSettings({ bridge }: { bridge: NormalizedBridge }) {
+  const settings = bridge.loaderSettings
+  const [list, setList] = React.useState<TautLoaderSetting[]>([])
+  const [error, setError] = React.useState<string | null>(null)
+  const refresh = React.useCallback(
+    () => settings?.list().then(setList),
+    [settings]
+  )
+  React.useEffect(() => {
+    refresh()
+  }, [refresh])
+  if (!settings || !list.length) return null
+
+  const set = async (setting: TautLoaderSetting, value: boolean) => {
+    setList((prev) =>
+      prev.map((s) => (s.id === setting.id ? { ...s, value } : s))
+    )
+    const saved = await settings.set(setting.id, value)
+    setError(saved ? null : `Couldn't save "${setting.label}"`)
+    await refresh()
+  }
+
+  return (
+    <elements.FieldSet>
+      <elements.Legend>{loaderName(bridge.loader)}</elements.Legend>
+      {list.map((setting) => (
+        <elements.Label
+          key={setting.id}
+          type="inline"
+          text={setting.label}
+          subtext={setting.subtext}
+        >
+          <elements.Checkbox
+            checked={setting.value}
+            onChange={(e) => set(setting, e.target.checked)}
+          />
+        </elements.Label>
+      ))}
+      {error && <elements.InlineAlert>{error}</elements.InlineAlert>}
+      {bridge.relaunch && list.some((s) => s.restartPending) && (
+        <elements.Button
+          type="outline"
+          size="small"
+          onClick={() => bridge.relaunch?.()}
+        >
+          Restart to apply
+        </elements.Button>
+      )}
+    </elements.FieldSet>
+  )
+}
+
 export function AdvancedScreen({
   pluginManager,
   configStore,
@@ -145,6 +201,8 @@ export function AdvancedScreen({
           Change where Taut loads from: {appSource[bridge.loader]}
         </p>
       </elements.FieldSet>
+
+      <LoaderSettings bridge={bridge} />
 
       <elements.FieldSet>
         <elements.Legend>Safe mode</elements.Legend>

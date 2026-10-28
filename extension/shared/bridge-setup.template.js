@@ -54,6 +54,8 @@
     if (key === 'taut-user-css') for (const cb of userCssCallbacks) cb(newValue)
   })
 
+  // parallel to desktop/src/preload.ts and userscript/bridge.ts
+
   /** @satisfies {import('../../shared/TautBridge').TautBridge} */
   window.TautBridge = {
     loader:
@@ -72,7 +74,7 @@
       remove: (details) => call('cookieRemove', [details]).catch(() => false),
     },
 
-    readSecret: (key) => call('readSecret', [key]).catch(() => null),
+    readSecret: (key) => call('readSecret', [key]),
     writeSecret: (key, value) =>
       call('writeSecret', [key, value]).catch(() => false),
     deleteSecret: (key) => call('deleteSecret', [key]).catch(() => false),
@@ -89,25 +91,20 @@
       },
     },
 
-    blobStore(namespace) {
-      return {
-        list: () => call('blobList', [namespace]),
-        read: (key) => call('blobRead', [namespace, key]),
-        write: (key, value) =>
-          call('blobWrite', [namespace, key, value]).catch(() => false),
-        delete: (key) =>
-          call('blobDelete', [namespace, key]).catch(() => false),
-        clear: () => call('blobClear', [namespace]).catch(() => false),
-      }
-    },
+    blobStore: (namespace) => ({
+      list: () => call('blobList', [namespace]),
+      read: (key) => call('blobRead', [namespace, key]),
+      write: (key, value) =>
+        call('blobWrite', [namespace, key, value]).catch(() => false),
+      delete: (key) => call('blobDelete', [namespace, key]).catch(() => false),
+      clear: () => call('blobClear', [namespace]).catch(() => false),
+    }),
 
-    async start() {},
+    start: async () => {},
 
     readConfigText: () => call('readConfigText', []),
-
-    writeConfigText(text) {
-      return call('writeConfigText', [text]).catch(() => false)
-    },
+    writeConfigText: (text) =>
+      call('writeConfigText', [text]).catch(() => false),
 
     onConfigTextChange(cb) {
       configTextCallbacks.add(cb)
@@ -115,10 +112,7 @@
     },
 
     readUserCss: () => call('readUserCss', []),
-
-    writeUserCss(text) {
-      return call('writeUserCss', [text]).catch(() => false)
-    },
+    writeUserCss: (text) => call('writeUserCss', [text]).catch(() => false),
 
     onUserCssChange(cb) {
       userCssCallbacks.add(cb)

@@ -1,6 +1,6 @@
 // Shows when someone was last seen on their profile
 
-import { type RtmEvent, TautPlugin } from '$taut'
+import { opt, type RtmEvent, TautPlugin } from '$taut'
 
 type PresenceProps = {
   showText?: boolean
@@ -21,6 +21,12 @@ type StoreMessage = {
 
 const MAX_SEEN = 2000
 const SCAN_EVERY = 15_000
+const SAVE_EVERY = 15_000
+// search.messages is tier 2 (about 20 a minute)
+const SEARCHES_PER_MINUTE = 15
+
+type Sightings = Record<string, number>
+type Search = { at: number; id: string }
 
 export default class LastSeen extends TautPlugin<typeof LastSeen> {
   static readonly id = 'LastSeen'
@@ -31,8 +37,20 @@ export default class LastSeen extends TautPlugin<typeof LastSeen> {
   static readonly category = 'people'
   static readonly defaultConfig = {
     enabled: false,
-    showLastMessage: true,
-    showObservedPresence: true,
+    searchMessages: opt(true, 'Finds their latest message with Slack search'),
+    watchActivity: opt(
+      true,
+      'Tracks messages, reactions and typing seen while Slack is open'
+    ),
+  }
+
+  static readonly migrateConfig = (saved: Record<string, unknown>) => {
+    if ('showLastMessage' in saved)
+      saved.searchMessages ??= saved.showLastMessage
+    if ('showObservedPresence' in saved)
+      saved.watchActivity ??= saved.showObservedPresence
+    delete saved.showLastMessage
+    delete saved.showObservedPresence
   }
 
   /** their last visible message in ms */
@@ -41,7 +59,14 @@ export default class LastSeen extends TautPlugin<typeof LastSeen> {
     maxSize: 2000,
   })
   /** when we last saw each person do something, in ms */
-  private seen = new this.api.Cache<number>('observed', { maxSize: MAX_SEEN })
+  private seen = this.api.storage.store<Sightings>('observed', {})
+  /** sightings newer than `seen`, saved in a batch */
+  private unsaved = new Map<string, number>()
+  private saveTimer: ReturnType<typeof setTimeout> | undefined
+  /** recent searches from every tab, sharing one rate limit */
+  private searches = this.api.storage.store<Search[]>('searches', [])
+  /** how many mounted views want each person's last message */
+  private readers = new Map<string, number>()
 
   private Surface = React.createContext<
     { userId?: string; card?: boolean } | undefined
@@ -49,11 +74,11 @@ export default class LastSeen extends TautPlugin<typeof LastSeen> {
   private scanned = 0
 
   async start() {
-    await this.seen.load()
+    await this.seen.ready
     await this.messages.load()
     if (this.api.signal.aborted) return
 
-    if (this.config.showObservedPresence) {
+    if (this.config.watchActivity) {
       for (const [type, who] of Object.entries(ACTIVITY))
         this.api.rtm.on(type, (event) => this.sighting(who(event), when(event)))
       this.readStore()
@@ -148,34 +173,35 @@ export default class LastSeen extends TautPlugin<typeof LastSeen> {
     const [seen, setSeen] = React.useState(0)
     React.useEffect(() => {
       if (!userId) return setSeen(0)
-      this.readStore()
+      if (this.config.watchActivity) this.readStore()
       let live = true
       const settle = (message: number | null) => {
         if (!live) return
-        const observed =
-          this.config.showObservedPresence === false
-            ? 0
-            : (this.seen.get(userId) ?? 0)
+        const observed = this.config.watchActivity ? this.observed(userId) : 0
         setSeen(Math.max(observed, message ?? 0))
       }
       settle(null)
-      if (this.config.showLastMessage)
+      this.readers.set(userId, (this.readers.get(userId) ?? 0) + 1)
+      if (this.config.searchMessages)
         this.lastMessageOf(userId)
           .then(settle)
           .catch(() => {})
       return () => {
         live = false
+        const left = (this.readers.get(userId) ?? 1) - 1
+        if (left) this.readers.set(userId, left)
+        else this.readers.delete(userId)
       }
     }, [userId])
     return seen
   }
 
   private CardLine = ({ userId }: { userId: string }) => {
-    const seen = this.useLastSeen(userId)
     const presence = this.api.redux.useReduxState(
       (state) => state.presence?.[userId]?.presence
     )
-    if (!seen || presence === 'active') return null
+    const seen = this.useLastSeen(presence === 'active' ? undefined : userId)
+    if (!seen) return null
     return (
       <span
         className="taut-last-seen__card"
@@ -186,22 +212,72 @@ export default class LastSeen extends TautPlugin<typeof LastSeen> {
     )
   }
 
+  private observed(userId: string) {
+    return Math.max(this.unsaved.get(userId) ?? 0, this.seen.get()[userId] ?? 0)
+  }
+
   private sighting(who: string | string[] | undefined, at: number) {
     if (!who || !(at > 0)) return
-    for (const id of typeof who === 'string' ? [who] : who) {
-      const known = this.seen.get(id)
-      if (known === undefined || known < at) this.seen.set(id, at)
+    for (const id of typeof who === 'string' ? [who] : who)
+      if (this.observed(id) < at) this.unsaved.set(id, at)
+    if (this.unsaved.size && !this.saveTimer && !this.api.signal.aborted)
+      this.saveTimer = setTimeout(() => this.save(), SAVE_EVERY)
+  }
+
+  private async save() {
+    clearTimeout(this.saveTimer)
+    this.saveTimer = undefined
+    if (!this.unsaved.size) return
+    const batch = this.unsaved
+    this.unsaved = new Map()
+    await this.seen
+      .update((saved) => merge(saved, batch))
+      .catch((error) => this.log('Saving sightings failed', error))
+  }
+
+  async stop() {
+    await this.save()
+  }
+
+  /** resolves when a search fits under the rate limit, throws if nobody wants `userId` by then */
+  private async searchTurn(userId: string) {
+    const id = crypto.randomUUID()
+    let recent = await this.takeSearch(id)
+    while (!recent.some((search) => search.id === id)) {
+      const oldest = Math.min(...recent.map((search) => search.at))
+      await new Promise((resolve) =>
+        setTimeout(resolve, oldest + 60_000 - Date.now())
+      )
+      if (this.api.signal.aborted) throw this.api.signal.reason
+      if (!this.readers.get(userId)) throw new Error('No longer shown')
+      recent = await this.takeSearch(id)
     }
+  }
+
+  /** adds search `id` to the last minute's searches if there's room, and resolves with them */
+  private takeSearch(id: string) {
+    const now = Date.now()
+    return this.searches.update((searches) => {
+      const recent = searches.filter((search) => now - search.at < 60_000)
+      return recent.length < SEARCHES_PER_MINUTE
+        ? [...recent, { at: now, id }]
+        : recent
+    })
   }
 
   private lastMessageOf(userId: string) {
     return this.messages.fetch(userId, async () => {
-      const res = await this.api.userAPI<SearchResponse>('search.messages', {
-        query: `from:<@${userId}>`,
-        sort: 'timestamp',
-        sort_dir: 'desc',
-        count: '1',
-      })
+      await this.searchTurn(userId)
+      const res = await this.api.userAPI<SearchResponse>(
+        'search.messages',
+        {
+          query: `from:<@${userId}>`,
+          sort: 'timestamp',
+          sort_dir: 'desc',
+          count: '1',
+        },
+        { rateLimitRetries: 2, signal: this.api.signal }
+      )
       const ts = res.messages?.matches?.[0]?.ts
       const at = ts ? Number.parseFloat(ts) * 1000 : 0
       return at || null
@@ -255,4 +331,15 @@ function ago(at: number): string {
     if (elapsed >= size)
       return format.format(-Math.max(1, Math.floor(elapsed / size)), unit)
   return 'just now'
+}
+
+/** `saved` with the newer sighting of each person, keeping the newest `MAX_SEEN` */
+function merge(saved: Sightings, batch: Map<string, number>): Sightings {
+  const next = { ...saved }
+  for (const [id, at] of batch) if (!(next[id] >= at)) next[id] = at
+  const entries = Object.entries(next)
+  if (entries.length <= MAX_SEEN) return next
+  return Object.fromEntries(
+    entries.sort((a, b) => b[1] - a[1]).slice(0, MAX_SEEN)
+  )
 }

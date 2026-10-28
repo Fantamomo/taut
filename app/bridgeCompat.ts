@@ -114,6 +114,11 @@ export function normalizeBridge(raw: TautBridge): NormalizedBridge {
     install: raw.install,
     restartToUpdate: raw.restartToUpdate && call(raw.restartToUpdate),
     onUpdateReady: raw.onUpdateReady && call(raw.onUpdateReady),
+    relaunch: raw.relaunch && call(raw.relaunch),
+    loaderSettings: raw.loaderSettings && {
+      list: raw.loaderSettings.list.bind(raw.loaderSettings),
+      set: raw.loaderSettings.set.bind(raw.loaderSettings),
+    },
     warnOutdated: call(raw.warnOutdated),
     start: call(raw.start),
     readConfigText: call(raw.readConfigText),

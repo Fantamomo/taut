@@ -19,6 +19,7 @@ interface TautPrefs {
   appUrl?: string
   notifPrompted?: boolean
   signing?: string
+  nativeFrame?: boolean
 }
 
 let cached: TautPrefs | null = null
@@ -50,4 +51,8 @@ export function getNotifPrompted(): boolean {
 
 export function getSigning(): string | undefined {
   return cached?.signing
+}
+
+export function getNativeFrame(): boolean {
+  return cached?.nativeFrame ?? false
 }

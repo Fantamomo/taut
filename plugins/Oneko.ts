@@ -2,8 +2,7 @@
 
 import { opt, type PluginConfig, type TautAPI, TautPlugin } from '$taut'
 
-const NEKO_FILE =
-  'https://raw.githubusercontent.com/adryd325/oneko.js/46b0684f29694eaf3252835003f4d9d0258556e5/oneko.gif'
+const NEKO_FILE = 'https://taut.jer.app/oneko.webp'
 
 type OnekoState = {
   nekoPosX: number
@@ -33,8 +32,7 @@ export default class Oneko extends TautPlugin<typeof Oneko> {
   }
 
   nekoEl: HTMLDivElement | null = null
-  animationFrameId: number | null = null
-  lastFrameTimestamp: number | null = null
+  timer?: ReturnType<typeof setInterval>
 
   nekoPosX = 32
   nekoPosY = 32
@@ -47,13 +45,11 @@ export default class Oneko extends TautPlugin<typeof Oneko> {
 
   boundHandleMouseMove: (event: MouseEvent) => void
   boundHandleBeforeUnload: () => void
-  boundOnAnimationFrame: (timestamp: number) => void
 
   constructor(api: TautAPI, config: PluginConfig<typeof Oneko>) {
     super(api, config)
     this.boundHandleMouseMove = this.handleMouseMove.bind(this)
     this.boundHandleBeforeUnload = this.saveState.bind(this)
-    this.boundOnAnimationFrame = this.onAnimationFrame.bind(this)
   }
 
   start(): void {
@@ -61,18 +57,11 @@ export default class Oneko extends TautPlugin<typeof Oneko> {
     this.createNekoElement()
     this.loadState()
     this.attachListeners()
-
-    this.animationFrameId = window.requestAnimationFrame(
-      this.boundOnAnimationFrame
-    )
+    this.timer = setInterval(() => this.frame(), 100)
   }
 
   stop(): void {
-    if (this.animationFrameId !== null) {
-      window.cancelAnimationFrame(this.animationFrameId)
-      this.animationFrameId = null
-    }
-
+    clearInterval(this.timer)
     this.saveState()
 
     document.removeEventListener('mousemove', this.boundHandleMouseMove)
@@ -155,30 +144,6 @@ export default class Oneko extends TautPlugin<typeof Oneko> {
     } catch (e) {
       this.log('Failed to save Oneko state', e)
     }
-  }
-
-  onAnimationFrame(timestamp: number): void {
-    if (!this.nekoEl?.isConnected) {
-      return
-    }
-
-    if (!this.lastFrameTimestamp) {
-      this.lastFrameTimestamp = timestamp
-    }
-
-    if (timestamp - this.lastFrameTimestamp > 100) {
-      if (timestamp - this.lastFrameTimestamp > 500) {
-        // skip missed frames after a long gap instead of catching up in a burst
-        this.lastFrameTimestamp = timestamp
-      } else {
-        this.lastFrameTimestamp += 100
-      }
-      this.frame()
-    }
-
-    this.animationFrameId = window.requestAnimationFrame(
-      this.boundOnAnimationFrame
-    )
   }
 
   setSprite(name: string, frame: number): void {

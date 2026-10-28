@@ -7,6 +7,7 @@ import path from 'node:path'
 import { app, BrowserWindow, ipcMain, Menu, MenuItem, shell } from 'electron'
 import { redirectNativeModules } from './nativeModules.js'
 import { configDir } from './paths.js'
+import { getNativeFrame } from './prefs.js'
 import { checkForUpdates } from './updates.js'
 
 declare const __TAUT_EMBEDDED__: boolean
@@ -179,7 +180,9 @@ export function applyPatches(slackAsarPath: string, tautPreloadPath: string) {
   redirectNativeModules(slackResourcesPath)
 
   let originalPreloadContents: string | null = null
-  ipcMain.handle('taut:get-original-preload', () => originalPreloadContents)
+  ipcMain.on('taut:get-original-preload', (event) => {
+    event.returnValue = originalPreloadContents
+  })
 
   const OrigBrowserWindow = electronCjs.BrowserWindow
   overrides.BrowserWindow = new Proxy(OrigBrowserWindow, {
@@ -194,12 +197,27 @@ export function applyPatches(slackAsarPath: string, tautPreloadPath: string) {
           console.error('[Taut] Failed to read Slack preload:', e)
         }
       }
+      const additionalArguments: string[] =
+        opts.webPreferences?.additionalArguments ?? []
+      const frameless =
+        process.platform === 'linux' &&
+        !getNativeFrame() &&
+        additionalArguments.includes('--window-type=main')
       return new Target({
         ...opts,
+        // the frameless overlay window like Slack's windows one
+        ...(frameless && {
+          frame: false,
+          titleBarStyle: 'hidden',
+          titleBarOverlay: { color: '#00000000', height: 33 },
+        }),
         webPreferences: {
           ...opts.webPreferences,
           preload: tautPreloadPath,
           devTools: true,
+          additionalArguments: frameless
+            ? [...additionalArguments, '--taut-frameless']
+            : additionalArguments,
         },
       })
     },

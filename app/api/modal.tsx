@@ -2,10 +2,20 @@ import { within } from '../helpers'
 import { reactPromise } from '../slack/react'
 import { getReduxStore } from '../slack/redux'
 import { byMeta, waitForExport } from '../slack/webpack'
-import { elementsAPIPromise } from './elements'
+import { elementsAPIPromise, type FormTextInputProps } from './elements'
 
 /** how long a modal waits for Slack's modal system to load before it counts as dismissed */
 const MODAL_WAIT_MS = 10_000
+/** input types where Enter submits the modal */
+const TEXT_INPUTS = new Set([
+  'text',
+  'search',
+  'email',
+  'url',
+  'tel',
+  'password',
+  'number',
+])
 
 type RawModalHandle = { close: () => void; render: (props: unknown) => void }
 type OpenModalThunk = (opts: {
@@ -103,7 +113,25 @@ export const modalAPIPromise = (async () => {
 
   const Confirmation = elements.ConfirmationModal
   const Label = elements.Label
-  const TextInput = elements.FormTextInput
+
+  function TextInput({ autoFocus, inputRef, ...props }: FormTextInputProps) {
+    const input = React.useRef<HTMLInputElement | null>(null)
+    // the submit button focuses itself as it mounts, effects run after that
+    // (slack's button likes to autofocus, which we want to override)
+    React.useEffect(() => {
+      if (autoFocus) input.current?.focus()
+    }, [])
+    return (
+      <elements.FormTextInput
+        {...props}
+        inputRef={(node) => {
+          input.current = node
+          if (typeof inputRef === 'function') inputRef(node)
+          else if (inputRef) inputRef.current = node
+        }}
+      />
+    )
+  }
 
   function openModal(options: OpenModalOptions): ModalHandle {
     let raw: RawModalHandle | undefined
@@ -111,6 +139,10 @@ export const modalAPIPromise = (async () => {
     const close = () => {
       closed = true
       raw?.close()
+    }
+    const submit = () => {
+      options.onSubmit?.()
+      close()
     }
     const element = (
       <Confirmation
@@ -120,10 +152,7 @@ export const modalAPIPromise = (async () => {
         submitButtonType={options.danger ? 'danger' : 'primary'}
         showCancelButton={options.showCancelButton ?? true}
         showSubmitButton={options.showSubmitButton ?? true}
-        onSubmit={() => {
-          options.onSubmit?.()
-          close()
-        }}
+        onSubmit={submit}
         onCancel={() => {
           options.onCancel?.()
           close()
@@ -133,7 +162,33 @@ export const modalAPIPromise = (async () => {
           close()
         }}
       >
-        {options.body}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: delegates Enter from the fields inside */}
+        <div
+          onKeyDown={(event) => {
+            const field = event.target as HTMLInputElement
+            if (
+              event.key === 'Enter' &&
+              !event.defaultPrevented &&
+              !event.nativeEvent.isComposing &&
+              !(
+                event.shiftKey ||
+                event.altKey ||
+                event.ctrlKey ||
+                event.metaKey
+              ) &&
+              field.tagName === 'INPUT' &&
+              TEXT_INPUTS.has(field.type) &&
+              // react bubbles events from portals (like a picker) here too
+              event.currentTarget.contains(field) &&
+              (options.showSubmitButton ?? true)
+            ) {
+              event.preventDefault()
+              submit()
+            }
+          }}
+        >
+          {options.body}
+        </div>
       </Confirmation>
     )
 

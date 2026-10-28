@@ -23,7 +23,7 @@ export default class ThreadJump extends TautPlugin<typeof ThreadJump> {
     enabled: true,
     step: opt.number(100, 'Replies to move each step', { min: 1, max: 1000 }),
     banners: opt(
-      true,
+      false,
       'Show Slack\'s unreleased "Back to top" and "Latest messages" banners in threads'
     ),
     findInThread: opt(

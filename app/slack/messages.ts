@@ -105,8 +105,8 @@ const MESSAGE_TEXT_FIELDS = [
 const TEXT_KEYS = new Set(['text', 'fallback', 'title', 'pretext', 'footer'])
 /** objects whose `text` is literal, where elsewhere it is mrkdwn */
 const LITERAL_TYPES = new Set(['text', 'link', 'plain_text'])
-/** mrkdwn that is markup rather than words: `<target|label>` and `:emoji:` */
-const MRKDWN_TOKEN = /<([^<>|]*)(?:\|([^<>]*))?>|:[\w+'-]+:/g
+/** mrkdwn that is markup rather than words: `<target|label>`, `:emoji:` and the escapes `&amp;` `&lt;` `&gt;` */
+const MRKDWN_TOKEN = /<([^<>|]*)(?:\|([^<>]*))?>|:[\w+'-]+:|&(?:amp|lt|gt);/g
 
 /** `transform` applied to the words of a mrkdwn string, its markup left alone */
 function transformMrkdwn(text: string, transform: TextTransform): string {
@@ -118,7 +118,7 @@ function transformMrkdwn(text: string, transform: TextTransform): string {
     // a link shows its label, while mentions keep a name in theirs
     out +=
       label !== undefined && !/^[@#!]/.test(target)
-        ? `<${target}|${transform(label)}>`
+        ? `<${target}|${transformMrkdwn(label, transform)}>`
         : token
     last = match.index + token.length
   }

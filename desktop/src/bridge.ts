@@ -7,6 +7,11 @@ import { dialog, ipcMain, net, safeStorage, session } from 'electron'
 import { writeFileAtomic } from './atomicWrite.js'
 import { readyUpdate, restartToUpdate } from './autoUpdate.js'
 import { getInstall } from './installType.js'
+import {
+  listLoaderSettings,
+  relaunch,
+  setLoaderSetting,
+} from './loaderSettings.js'
 import type { DesktopRpc } from './rpc'
 import { checkForUpdates } from './updates.js'
 
@@ -68,6 +73,7 @@ export function setupBridge(
   ipcMain.handle('taut:get-install', () => getInstall())
   ipcMain.handle('taut:get-update-ready', () => readyUpdate())
   ipcMain.handle('taut:restart-to-update', () => restartToUpdate())
+  ipcMain.handle('taut:relaunch', () => relaunch())
   ipcMain.handle('taut:get-app-url', () => opts.getAppUrl())
   ipcMain.handle('taut:set-app-url', async (_, url: string) => {
     await opts.setAppUrl(url)
@@ -185,17 +191,17 @@ export function setupBridge(
 
   const secretsFile = path.join(config.configDir, 'secrets.dat')
 
+  /** throws when the file exists but can't be read */
   async function readSecrets(): Promise<Record<string, string>> {
-    try {
-      if (!(await fileExists(secretsFile))) return {}
-      const raw = await fs.readFile(secretsFile)
-      const json = safeStorage.isEncryptionAvailable()
-        ? safeStorage.decryptString(raw)
-        : raw.toString('utf8')
-      return JSON.parse(json)
-    } catch {
-      return {}
-    }
+    if (!(await fileExists(secretsFile))) return {}
+    const raw = await fs.readFile(secretsFile)
+    const json = safeStorage.isEncryptionAvailable()
+      ? safeStorage.decryptString(raw)
+      : raw.toString('utf8')
+    const secrets = JSON.parse(json)
+    if (!secrets || typeof secrets !== 'object')
+      throw new Error('secrets.dat is not an object')
+    return secrets
   }
 
   async function writeSecrets(
@@ -231,6 +237,8 @@ export function setupBridge(
   }
 
   const rpcMethods: DesktopRpc = {
+    listLoaderSettings,
+    setLoaderSetting,
     fetch: (url, init) =>
       new Promise((resolve, reject) => {
         const headers = { ...(init.headers ?? {}) }

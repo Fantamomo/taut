@@ -134,6 +134,14 @@ export default class AccountSwitcher extends TautPlugin<
     await this.refresh()
   }
 
+  private failed(title: string, err: unknown) {
+    this.log(title, err)
+    this.api.modal.alert({
+      title,
+      body: err instanceof Error ? err.message : String(err),
+    })
+  }
+
   private makeAccountRow(): React.FC<AccountRowProps> {
     const { members } = this.api
     const SvgIcon = this.SvgIcon
@@ -276,7 +284,7 @@ export default class AccountSwitcher extends TautPlugin<
           : () => {
               this.api.accounts
                 .switchTo(account.userId)
-                .catch((err) => this.log('Switch failed', err))
+                .catch((err) => this.failed("Couldn't switch account", err))
             },
       })
     }
@@ -293,7 +301,7 @@ export default class AccountSwitcher extends TautPlugin<
       click: () => {
         this.api.accounts
           .addAccount()
-          .catch((err) => this.log('Add account failed', err))
+          .catch((err) => this.failed("Couldn't add an account", err))
       },
     })
 

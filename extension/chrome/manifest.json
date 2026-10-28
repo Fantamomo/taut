@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Taut",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "minimum_chrome_version": "140",
   "description": "Client mod for Slack",
   "author": "Jeremy Woolley",

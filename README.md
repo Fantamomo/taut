@@ -24,7 +24,7 @@ Turn plugins on and off in `Preferences` > `Taut`, where you can also write your
 
 <!-- begin plugins (written by scripts/readme.ts) -->
 
-<details><summary>All 37 plugins</summary>
+<details><summary>All 38 plugins</summary>
 
 #### Messages
 
@@ -75,6 +75,7 @@ Turn plugins on and off in `Preferences` > `Taut`, where you can also write your
 - **Faster Slack**: Optimizations that make Slack faster and smoother
 - **Private Channel** (Hack Club only): Lets you see and mention private channels you aren't in (uses the [flaron](https://flaron.halceon.dev) index)
 - **Quick Join**: Adds "Join channel" to the right-click menu of channels you're not in
+- **Slack Fixes**: Fixes small bugs in Slack's UI
 
 #### Fun
 
@@ -101,12 +102,14 @@ Most people want the desktop app.
 <details><summary>Linux package repositories (apt, dnf, and Nix)</summary>
 
 - Debian / Ubuntu:
+
   ```sh
   curl -fsSL https://taut.jer.app/taut.gpg | sudo tee /usr/share/keyrings/taut.gpg >/dev/null
   echo "deb [signed-by=/usr/share/keyrings/taut.gpg] https://taut.jer.app/apt stable main" | sudo tee /etc/apt/sources.list.d/taut.list
   sudo apt update && sudo apt install taut
   ```
 - Fedora / RHEL:
+
   ```sh
   sudo dnf config-manager addrepo --from-repofile=https://taut.jer.app/rpm/taut.repo
   sudo dnf install taut

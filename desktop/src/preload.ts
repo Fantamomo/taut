@@ -6,29 +6,82 @@ import type { RpcArgs, RpcMethod, RpcResult, SerialFetchInit } from './rpc'
 declare const __TAUT_LOADER_VERSION__: string
 declare const __TAUT_EMBEDDED__: boolean
 
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webFrame } = require('electron')
 
-const origPreloadPromise = ipcRenderer.invoke(
-  'taut:get-original-preload'
-) as Promise<string | null>
-const tautUrlPromise = ipcRenderer.invoke('taut:get-app-url') as Promise<string>
-const pathsPromise = ipcRenderer.invoke('taut:get-paths')
-const installPromise = (
-  ipcRenderer.invoke('taut:get-install') as Promise<TautInstall>
-).catch(() => undefined)
+// patch.ts made this window frameless, so turn on slack's windows title bar, a debug feature on linux
+const frameless = process.argv.includes('--taut-frameless')
 
-const isClientPage = /\/client(\/|$)/.test(location.pathname)
+if (frameless) {
+  const sendSync = ipcRenderer.sendSync.bind(ipcRenderer)
+  ipcRenderer.sendSync = (channel: string, ...args: unknown[]) => {
+    const result = sendSync(channel, ...args)
+    if (channel !== 'SLACK_GET_REDUX_STATE' || !result?.settings) return result
+    const withFlag = (layer: { debugFeatures?: string[] } = {}) => ({
+      ...layer,
+      debugFeatures: [...(layer.debugFeatures ?? []), 'window-chrome'],
+    })
+    // slack's preload rebuilds settings from its layers on every update, so slackDefaults needs the flag too
+    return {
+      ...result,
+      settings: {
+        ...withFlag(result.settings),
+        slackDefaults: withFlag(result.settings.slackDefaults),
+      },
+    }
+  }
+  // keep slack's top nav clear of the window controls, which gtk can put on either side
+  // the menu button's slot already pads it, so it overlaps left controls by 18px to keep the spacing correct
+  webFrame.insertCSS(`
+    .p-ia4_top_nav__native_ui_spacer { margin-left: max(0px, env(titlebar-area-x, 0px) - 18px) !important; }
+    .p-ia4_top_nav__right_container { margin-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)) !important; }
+  `)
+}
 
-let rewriteFailed = false
 try {
-  rewriteFailed = sessionStorage.getItem('taut_rewrite_failed') !== null
-  sessionStorage.removeItem('taut_rewrite_failed')
-} catch {}
-if (rewriteFailed)
-  console.warn('[Taut] Loading Slack without Taut after a failed rewrite')
-const rewriting = isClientPage && !rewriteFailed
+  const origPreload: string | null = ipcRenderer.sendSync(
+    'taut:get-original-preload'
+  )
+  if (origPreload) {
+    console.log('[Taut] Evaluating Slack original preload')
+    // biome-ignore lint/security/noGlobalEval: we have to eval the original preload that we replaced
+    eval(origPreload)
+  }
+} catch (e) {
+  console.error('[Taut] Failed to eval Slack preload:', e)
+}
 
-const origHtmlPromise = rewriting ? fetch(location.href).then(readPage) : null
+// what slack's useWindowThemedTitlebar does on windows: color the window controls and match the top nav's height
+const desktop = frameless ? (window as any).desktop : undefined
+const store = desktop?.windowChrome?.getStore()
+const windowId: Promise<number> | undefined = desktop?.window?.getWindowId()
+if (store && windowId) {
+  let applied = ''
+  const syncWindowControls = async () => {
+    const id = await windowId
+    const symbolColor: string | undefined = store.getState().titleBar?.textColor
+    const nav = document.querySelector('.p-ia4_top_nav')
+    // slack's formula, the top nav's height in window pixels minus 1
+    const height =
+      nav &&
+      Math.round(
+        nav.getBoundingClientRect().height * webFrame.getZoomFactor()
+      ) - 1
+    const options = {
+      ...(symbolColor && { symbolColor }),
+      ...(height && height > 0 && { height }),
+    }
+    const key = JSON.stringify(options)
+    if (key === '{}' || key === applied) return
+    applied = key
+    desktop.window.setTitleBarOverlay(id, options)
+  }
+  store.subscribe(syncWindowControls)
+  // zooming resizes the viewport, and unlike the window's, its listeners survive document.open()
+  visualViewport?.addEventListener('resize', syncWindowControls)
+  syncWindowControls()
+}
+
+// parallel to extension/chrome/content.js, extension/firefox/background.js, extension/shared/bridge-setup.template.js, userscript/main.ts, and userscript/bridge.ts
 
 async function readPage(response: Response) {
   const type = response.headers.get('content-type') ?? ''
@@ -50,42 +103,39 @@ function reloadWithoutTaut(error: unknown) {
   location.reload()
 }
 
-if (rewriting) {
-  document.open()
-  document.write('<!DOCTYPE html>')
-  document.close()
-}
-
 ;(async () => {
-  try {
-    // Slack's preload runs first so its exposeInMainWorld calls land before Slack's scripts
-    const origPreload = await origPreloadPromise
-    if (origPreload) {
-      console.log('[Taut] Evaluating Slack original preload')
-      // biome-ignore lint/security/noGlobalEval: we have to eval the original preload that we replaced
-      eval(origPreload)
-    }
-  } catch (e) {
-    console.error('[Taut] Failed to eval Slack preload:', e)
-  }
-
-  if (!isClientPage) {
+  // the preload runs on every page, the other loaders only match the client
+  if (!/\/client(\/|$)/.test(location.pathname)) {
     console.log('[Taut] Skipping patch for non-client page:', location.pathname)
     return
   }
-  if (!origHtmlPromise) return
 
-  const html = await origHtmlPromise
-
-  let tautUrl: string
+  let rewriteFailed = false
   try {
-    tautUrl = await tautUrlPromise
-  } catch {
-    tautUrl = 'https://taut.jer.app/taut.js'
+    rewriteFailed = sessionStorage.getItem('taut_rewrite_failed') !== null
+    sessionStorage.removeItem('taut_rewrite_failed')
+  } catch {}
+  if (rewriteFailed) {
+    console.warn('[Taut] Loading Slack without Taut after a failed rewrite')
+    return
   }
 
-  const paths = await pathsPromise
-  const install = await installPromise
+  const DEFAULT_URL = 'https://taut.jer.app/taut.js'
+
+  // left open, so DOMContentLoaded only fires on the rewritten page, where slack's preload sets up the menu button
+  document.open()
+  document.write('<!DOCTYPE html>')
+
+  const [tautUrl, html, paths, install] = await Promise.all([
+    (ipcRenderer.invoke('taut:get-app-url') as Promise<string>).catch(
+      () => DEFAULT_URL
+    ),
+    fetch(location.href).then(readPage),
+    ipcRenderer.invoke('taut:get-paths'),
+    (ipcRenderer.invoke('taut:get-install') as Promise<TautInstall>).catch(
+      () => undefined
+    ),
+  ])
 
   const call = <M extends RpcMethod>(
     method: M,
@@ -97,8 +147,8 @@ if (rewriting) {
     loaderVersion: __TAUT_LOADER_VERSION__,
     bridgeVersion: 3,
     embedded: __TAUT_EMBEDDED__,
-    install,
     PATHS: paths,
+    install,
 
     // see autoUpdate.ts
     ...(install?.canSelfUpdate
@@ -118,6 +168,13 @@ if (rewriting) {
         }
       : {}),
 
+    relaunch: () => ipcRenderer.invoke('taut:relaunch'),
+    loaderSettings: {
+      list: () => call('listLoaderSettings', []).catch(() => []),
+      set: (id, value) =>
+        call('setLoaderSetting', [id, value]).catch(() => false),
+    },
+
     cookies: {
       get: (details) => call('cookieGet', [details]).catch(() => null),
       getAll: (details) => call('cookieGetAll', [details]).catch(() => []),
@@ -125,7 +182,7 @@ if (rewriting) {
       remove: (details) => call('cookieRemove', [details]).catch(() => false),
     },
 
-    readSecret: (key) => call('readSecret', [key]).catch(() => null),
+    readSecret: (key) => call('readSecret', [key]),
     writeSecret: (key, value) =>
       call('writeSecret', [key, value]).catch(() => false),
     deleteSecret: (key) => call('deleteSecret', [key]).catch(() => false),
@@ -157,7 +214,8 @@ if (rewriting) {
     start: () => ipcRenderer.invoke('taut:setup-watchers'),
 
     readConfigText: () => call('readConfigText', []),
-    writeConfigText: (text) => call('writeConfigText', [text]),
+    writeConfigText: (text) =>
+      call('writeConfigText', [text]).catch(() => false),
 
     onConfigTextChange(cb: (text: string) => void) {
       const handler = (_: unknown, text: string) => cb(text)
@@ -167,7 +225,7 @@ if (rewriting) {
     },
 
     readUserCss: () => call('readUserCss', []),
-    writeUserCss: (css) => call('writeUserCss', [css]),
+    writeUserCss: (text) => call('writeUserCss', [text]).catch(() => false),
 
     onUserCssChange(cb: (css: string) => void) {
       const handler = (_: unknown, css: string) => cb(css)
@@ -175,7 +233,7 @@ if (rewriting) {
       return () => ipcRenderer.removeListener('taut:user-css-changed', handler)
     },
 
-    fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+    fetch(input: RequestInfo | URL, init?: RequestInit) {
       const url =
         typeof input === 'string'
           ? input
@@ -199,7 +257,7 @@ if (rewriting) {
         }
         serialInit.headers = headers
       }
-      // contextBridge structure-clones this
+      // contextBridge structure-clones this, so the app rebuilds the Response
       return call('fetch', [url, serialInit])
     },
 
@@ -210,7 +268,7 @@ if (rewriting) {
   doc.querySelector('meta[http-equiv="Content-Security-Policy"]')?.remove()
 
   const scripts = Array.from(doc.querySelectorAll('script')).map((s) => ({
-    src: (s as HTMLScriptElement).src,
+    src: s.src,
     textContent: s.textContent,
     type: s.getAttribute('type'),
   }))

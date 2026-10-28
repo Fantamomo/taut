@@ -375,13 +375,15 @@ export default class ShowSendingBot extends TautPlugin<typeof ShowSendingBot> {
         if (!sender) return <Original {...props} />
         return (
           <Original {...props}>
-            {props.children}
-            <this.Badge
-              {...sender}
-              size={badgeSize(props.size === 'large' ? 36 : 28)}
-              corner="bottom-left"
-              interactive={false}
-            />
+            <span className="taut-sending-bot">
+              {props.children}
+              <this.Badge
+                {...sender}
+                size={badgeSize(props.size === 'large' ? 36 : 28)}
+                corner="bottom-left"
+                interactive={false}
+              />
+            </span>
           </Original>
         )
       }

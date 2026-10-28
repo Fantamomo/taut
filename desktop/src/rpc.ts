@@ -1,6 +1,6 @@
 // Desktop bridge RPC types
 
-import type { TautCookie } from '../../shared/TautBridge'
+import type { TautCookie, TautLoaderSetting } from '../../shared/TautBridge'
 
 export type SerialFetchInit = {
   method?: string
@@ -45,6 +45,8 @@ export type DesktopRpc = {
   }) => Promise<TautCookie[]>
   cookieSet: (cookie: TautCookie & { url: string }) => Promise<boolean>
   cookieRemove: (details: { url: string; name: string }) => Promise<boolean>
+  listLoaderSettings: () => Promise<TautLoaderSetting[]>
+  setLoaderSetting: (id: string, value: boolean) => Promise<boolean>
 }
 
 export type RpcMethod = keyof DesktopRpc

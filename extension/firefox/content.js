@@ -1,5 +1,7 @@
 // Taut Firefox content script
 
+// parallel to extension/chrome/content.js
+
 window.addEventListener('message', async (event) => {
   if (event.source !== window) return
   const msg = event.data
