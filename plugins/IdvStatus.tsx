@@ -1,4 +1,4 @@
-// Shows a red squiggle on users who are not IDV eligible, and orange when verified ID but >18
+// Underlines people who aren't IDV eligible in red, and IDV over 18 in orange
 
 import { opt, TautPlugin } from '$taut'
 
@@ -8,7 +8,7 @@ export default class IdvStatus extends TautPlugin<typeof IdvStatus> {
   static readonly id = 'IdvStatus'
   static readonly pluginName = 'IDV Status'
   static readonly description =
-    'Shows a red squiggle on users who are not IDV eligible, and orange when verified ID but >18'
+    "Underlines people who aren't IDV eligible in red, and IDV over 18 in orange"
   static readonly authors = ['sahil', 'rowan'] as const
   static readonly category = 'people'
   static readonly hackClubOnly = true

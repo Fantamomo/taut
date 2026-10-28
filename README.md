@@ -24,31 +24,32 @@ Turn plugins on and off in `Preferences` > `Taut`, where you can also write your
 
 <!-- begin plugins (written by scripts/readme.ts) -->
 
-<details><summary>All 38 plugins</summary>
+<details><summary>All 39 plugins</summary>
 
 #### Messages
 
-- **Bring Back Slackbot**: Makes Slackbot custom responses be from Slackbot again
-- **Copy Reacted**: Copy the list of people who reacted to a message
-- **Owl Mode** (Hack Club only): Reply and react anonymously as the author of your owl confessions
+- **Bring Back Slackbot**: Shows Slackbot's custom responses as sent by Slackbot again
+- **Copy Reacted**: Copies the list of people who reacted to a message
+- **Owl Mode** (Hack Club only): Lets you reply and react anonymously as the author of your owl confessions
 - **Show Real User**: Shows the user who sent a message via a bot like at-channel
 - **Show Sending Bot**: Shows the bot used to send a user message
 - **Shut Up Slackbot**: Marks Slackbot's "an app took over your slash command" DMs as read and silences them
-- **Thread Jump**: Jump to the top, bottom, a date, or 100 replies at a time in long threads
+- **Thread Jump**: Lets you jump through long threads to the top, bottom or a date, or 100 replies at a time
 - **User Pronouns**: Shows people's pronouns next to the timestamp on their messages
-- **Who Reacted**: Shows the avatars of everyone who reacted next to each reaction
+- **Who Reacted**: Shows the avatars of everyone who reacted, next to each reaction
 
 #### Message Box
 
 - **Anonymize Filenames**: Randomizes file names before uploading to prevent metadata leakage
+- **Better Typing Indicator**: Shows as many typing people as possible and lets you view their profiles
 - **Clear URLs**: Strips tracking parameters from links you paste into messages (rules from [ClearURLs](https://github.com/ClearURLs/Rules))
 - **Haiku Warning** (Hack Club only): Warns before you send a haiku that Orpheus would repeat in the thread
 - **Invisible Forward**: Makes Slack links at the start of your messages invisible, like a forwarded message
 - **Native At Channel** (Hack Club only): Sends @channel and @here through at-channel where you can't ping yourself
-- **Real Markdown**: Write messages in standard Markdown instead of Slack's markup
+- **Real Markdown**: Formats standard Markdown as you type, instead of Slack's markup
 - **Restricted Channel Warning**: Shows admins the "Only certain people can post" box where only admins can post
 - **Silent Typing**: Adds a button to hide your typing indicator, so others can't see when you're typing
-- **Slim Message Box**: Simplifies and cleans up the message box
+- **Slim Message Box**: Fits the message box on one line and hides the buttons you don't use
 
 #### People
 
@@ -56,10 +57,10 @@ Turn plugins on and off in `Preferences` > `Taut`, where you can also write your
 - **Custom Name Recording**: Uploads an audio file as your name recording, instead of recording one
 - **Huddle Activity**: Logs who did what in a huddle, including mutes and settings changes
 - **Human Count**: Leaves apps, and optionally guests, out of the channel header's member count
-- **IDV Status** (Hack Club only): Shows a red squiggle on users who are not IDV eligible, and orange when verified ID but >18
-- **Last Seen**: Shows when someone was last seen on their profile
-- **Nicknames**: Locally nickname other members across Slack
-- **Office Hours**: Weekly schedules for going out of office or appearing away
+- **IDV Status** (Hack Club only): Underlines people who aren't IDV eligible in red, and IDV over 18 in orange
+- **Last Seen**: Shows on someone's profile when they were last seen
+- **Nicknames**: Renames members across Slack
+- **Office Hours**: Sets you out of office or away on a weekly schedule
 
 #### Privacy
 
@@ -69,10 +70,10 @@ Turn plugins on and off in `Preferences` > `Taut`, where you can also write your
 
 #### App
 
-- **Account Switcher**: Switch between saved accounts from the profile menu
+- **Account Switcher**: Switches between saved accounts from the profile menu
 - **Browser Pop-outs**: Enables Slack's pop-out windows in the browser
-- **Experiments**: Try Slack's unreleased features by overriding its experiments
-- **Faster Slack**: Optimizations that make Slack faster and smoother
+- **Experiments**: Adds a tab for trying Slack's unreleased features
+- **Faster Slack**: Makes Slack faster and smoother
 - **Private Channel** (Hack Club only): Lets you see and mention private channels you aren't in (uses the [flaron](https://flaron.halceon.dev) index)
 - **Quick Join**: Adds "Join channel" to the right-click menu of channels you're not in
 - **Slack Fixes**: Fixes small bugs in Slack's UI
@@ -80,7 +81,7 @@ Turn plugins on and off in `Preferences` > `Taut`, where you can also write your
 #### Fun
 
 - **Censorship**: Masks words you choose in messages, only on your screen
-- **Oneko**: A cute cat that chases your cursor around the screen, based on [oneko.js](https://github.com/adryd325/oneko.js)
+- **Oneko**: Adds a cute cat that chases your cursor, based on [oneko.js](https://github.com/adryd325/oneko.js)
 
 </details>
 
@@ -168,7 +169,8 @@ Install with `npm ci` (Node 22.18+), or `bun install`.
 | `npm run dev` | Serves a live-rebuilding bundle on `localhost:3000` for the `Dev server` source |
 | `npm run build` | Builds the app, extensions and userscript into `dist/` |
 | `npm run build -- desktop mac win` | Builds the desktop app for those platforms (slow), `--help` for more |
-| `npm run check` | Lints and typechecks |
+| `npm run check` | Lints, typechecks, checks the README plugin list |
+| `npm run fix` | Formats, fixes lints, typechecks, updates the README plugin list |
 | `npm run readme` | Rewrites the plugin list above from each plugin's `pluginName`, `description` and `category` |
 
 ### App source

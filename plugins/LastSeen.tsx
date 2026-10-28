@@ -1,4 +1,4 @@
-// Shows when someone was last seen on their profile
+// Shows on someone's profile when they were last seen
 
 import { opt, type RtmEvent, TautPlugin } from '$taut'
 
@@ -32,7 +32,7 @@ export default class LastSeen extends TautPlugin<typeof LastSeen> {
   static readonly id = 'LastSeen'
   static readonly pluginName = 'Last Seen'
   static readonly description =
-    'Shows when someone was last seen on their profile'
+    "Shows on someone's profile when they were last seen"
   static readonly authors = ['jeremy', 'rowan'] as const
   static readonly category = 'people'
   static readonly defaultConfig = {

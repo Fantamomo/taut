@@ -1,4 +1,4 @@
-// Weekly schedules for going out of office or appearing away
+// Sets you out of office or away on a weekly schedule
 
 import {
   type JsonValue,
@@ -51,7 +51,7 @@ export default class OfficeHours extends TautPlugin<typeof OfficeHours> {
   static readonly id = 'OfficeHours'
   static readonly pluginName = 'Office Hours'
   static readonly description =
-    'Weekly schedules for going out of office or appearing away'
+    'Sets you out of office or away on a weekly schedule'
   static readonly authors = ['jeremy', 'rowan'] as const
   static readonly category = 'people'
   static readonly defaultConfig = {

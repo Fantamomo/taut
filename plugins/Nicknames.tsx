@@ -1,4 +1,4 @@
-// Locally nickname other members across Slack
+// Renames members across Slack
 
 import { type MenuTemplateItem, TautPlugin } from '$taut'
 
@@ -15,7 +15,7 @@ type MemberLike = {
 export default class Nicknames extends TautPlugin<typeof Nicknames> {
   static readonly id = 'Nicknames'
   static readonly pluginName = 'Nicknames'
-  static readonly description = 'Locally nickname other members across Slack'
+  static readonly description = 'Renames members across Slack'
   static readonly authors = ['jeremy', 'izie'] as const
   static readonly category = 'people'
   static readonly defaultConfig = {

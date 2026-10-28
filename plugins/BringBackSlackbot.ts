@@ -1,4 +1,4 @@
-// Makes Slackbot custom responses be from Slackbot again
+// Shows Slackbot's custom responses as sent by Slackbot again
 
 import { TautPlugin } from '$taut'
 
@@ -8,7 +8,7 @@ export default class BringBackSlackbot extends TautPlugin<
   static readonly id = 'BringBackSlackbot'
   static readonly pluginName = 'Bring Back Slackbot'
   static readonly description =
-    'Makes Slackbot custom responses be from Slackbot again'
+    "Shows Slackbot's custom responses as sent by Slackbot again"
   static readonly authors = ['jeremy'] as const
   static readonly category = 'messages'
   static readonly defaultConfig = {

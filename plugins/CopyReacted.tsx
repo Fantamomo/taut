@@ -1,4 +1,4 @@
-// Copy the list of people who reacted to a message
+// Copies the list of people who reacted to a message
 
 import { type MenuTemplateItem, opt, TautPlugin } from '$taut'
 
@@ -18,7 +18,7 @@ export default class CopyReacted extends TautPlugin<typeof CopyReacted> {
   static readonly id = 'CopyReacted'
   static readonly pluginName = 'Copy Reacted'
   static readonly description =
-    'Copy the list of people who reacted to a message'
+    'Copies the list of people who reacted to a message'
   static readonly authors = ['jeremy', 'rowan'] as const
   static readonly category = 'messages'
   static readonly defaultConfig = {

@@ -1,4 +1,4 @@
-// Jump to the top, bottom, a date, or 100 replies at a time in long threads
+// Lets you jump through long threads to the top, bottom or a date, or 100 replies at a time
 
 import { opt, TautPlugin, type ThreadPane } from '$taut'
 
@@ -16,7 +16,7 @@ export default class ThreadJump extends TautPlugin<typeof ThreadJump> {
   static readonly id = 'ThreadJump'
   static readonly pluginName = 'Thread Jump'
   static readonly description =
-    'Jump to the top, bottom, a date, or 100 replies at a time in long threads'
+    'Lets you jump through long threads to the top, bottom or a date, or 100 replies at a time'
   static readonly authors = ['jeremy'] as const
   static readonly category = 'messages'
   static readonly defaultConfig = {

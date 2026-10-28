@@ -1,4 +1,4 @@
-// Simplifies and cleans up the message box
+// Fits the message box on one line and hides the buttons you don't use
 
 import { opt, TautPlugin } from '$taut'
 
@@ -31,7 +31,8 @@ const BROADCAST = '.p-threads_footer__input_container__broadcast_controls'
 export default class SlimMessageBox extends TautPlugin<typeof SlimMessageBox> {
   static readonly id = 'SlimMessageBox'
   static readonly pluginName = 'Slim Message Box'
-  static readonly description = 'Simplifies and cleans up the message box'
+  static readonly description =
+    "Fits the message box on one line and hides the buttons you don't use"
   static readonly authors = ['jeremy', 'rowan'] as const
   static readonly category = 'messageBox'
   static readonly defaultConfig = {

@@ -1,4 +1,4 @@
-// A cute cat that chases your cursor around the screen, based on oneko.js
+// Adds a cute cat that chases your cursor, based on oneko.js
 
 import { opt, type PluginConfig, type TautAPI, TautPlugin } from '$taut'
 
@@ -20,7 +20,7 @@ export default class Oneko extends TautPlugin<typeof Oneko> {
   static readonly id = 'Oneko'
   static readonly pluginName = 'Oneko'
   static readonly description =
-    'A cute cat that chases your cursor around the screen, based on <https://github.com/adryd325/oneko.js|oneko.js>'
+    'Adds a cute cat that chases your cursor, based on <https://github.com/adryd325/oneko.js|oneko.js>'
   static readonly authors = ['adryd', 'jeremy'] as const
   static readonly category = 'fun'
   static readonly defaultConfig = {

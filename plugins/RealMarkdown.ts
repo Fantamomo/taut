@@ -1,4 +1,4 @@
-// Write messages in standard Markdown instead of Slack's markup
+// Formats standard Markdown as you type, instead of Slack's markup
 
 import { type InlineFormat, type MarkupSpan, TautPlugin } from '$taut'
 
@@ -6,7 +6,7 @@ export default class RealMarkdown extends TautPlugin<typeof RealMarkdown> {
   static readonly id = 'RealMarkdown'
   static readonly pluginName = 'Real Markdown'
   static readonly description =
-    "Write messages in standard Markdown instead of Slack's markup"
+    "Formats standard Markdown as you type, instead of Slack's markup"
   static readonly authors = ['jeremy', 'rowan'] as const
   static readonly category = 'messageBox'
   static readonly defaultConfig = {

@@ -1,4 +1,4 @@
-// Reply and react anonymously as the author of your owl confessions
+// Lets you reply and react anonymously as the author of your owl confessions
 
 import { opt, TautPlugin } from '$taut'
 
@@ -31,7 +31,7 @@ export default class OwlMode extends TautPlugin<typeof OwlMode> {
   static readonly id = 'OwlMode'
   static readonly pluginName = 'Owl Mode'
   static readonly description =
-    'Reply and react anonymously as the author of your owl confessions'
+    'Lets you reply and react anonymously as the author of your owl confessions'
   static readonly authors = ['jeremy'] as const
   static readonly category = 'messages'
   static readonly hackClubOnly = true

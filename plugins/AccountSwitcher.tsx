@@ -1,4 +1,4 @@
-// Switch between saved accounts from the profile menu
+// Switches between saved accounts from the profile menu
 
 import {
   type ComponentType,
@@ -25,7 +25,7 @@ export default class AccountSwitcher extends TautPlugin<
   static readonly id = 'AccountSwitcher'
   static readonly pluginName = 'Account Switcher'
   static readonly description =
-    'Switch between saved accounts from the profile menu'
+    'Switches between saved accounts from the profile menu'
   static readonly category = 'app'
   static readonly defaultConfig = {
     enabled: true,

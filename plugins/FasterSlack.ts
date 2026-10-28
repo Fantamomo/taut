@@ -1,4 +1,4 @@
-// Optimizations that make Slack faster and smoother
+// Makes Slack faster and smoother
 
 import { opt, TautPlugin } from '$taut'
 
@@ -7,8 +7,7 @@ const QUIET_MS = 150
 export default class FasterSlack extends TautPlugin<typeof FasterSlack> {
   static readonly id = 'FasterSlack'
   static readonly pluginName = 'Faster Slack'
-  static readonly description =
-    'Optimizations that make Slack faster and smoother'
+  static readonly description = 'Makes Slack faster and smoother'
   static readonly authors = ['jeremy'] as const
   static readonly category = 'app'
   static readonly defaultConfig = {

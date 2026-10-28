@@ -1,4 +1,4 @@
-// Try Slack's unreleased features by overriding its experiments
+// Adds a tab for trying Slack's unreleased features
 
 import {
   type ExperimentAssignment as Assignment,
@@ -26,7 +26,7 @@ export default class Experiments extends TautPlugin<typeof Experiments> {
   static readonly id = 'Experiments'
   static readonly pluginName = 'Experiments'
   static readonly description =
-    "Try Slack's unreleased features by overriding its experiments"
+    "Adds a tab for trying Slack's unreleased features"
   static readonly authors = ['jeremy'] as const
   static readonly category = 'app'
   static readonly defaultConfig = {

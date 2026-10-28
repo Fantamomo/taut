@@ -1,4 +1,4 @@
-// Shows the avatars of everyone who reacted next to each reaction
+// Shows the avatars of everyone who reacted, next to each reaction
 
 import { opt, TautPlugin } from '$taut'
 
@@ -11,7 +11,7 @@ export default class WhoReacted extends TautPlugin<typeof WhoReacted> {
   static readonly id = 'WhoReacted'
   static readonly pluginName = 'Who Reacted'
   static readonly description =
-    'Shows the avatars of everyone who reacted next to each reaction'
+    'Shows the avatars of everyone who reacted, next to each reaction'
   static readonly authors = ['jeremy', 'rowan'] as const
   static readonly category = 'messages'
   static readonly defaultConfig = {
