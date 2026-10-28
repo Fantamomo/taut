@@ -209,6 +209,7 @@ function makeConfig(
       icon: ICON,
       category: 'Utility',
     },
+    rpm: { fpm: ['--rpm-rpmbuild-define', '_build_id_links none'] },
   }
 }
 
