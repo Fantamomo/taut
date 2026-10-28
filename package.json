@@ -1,6 +1,6 @@
 {
   "name": "taut",
-  "version": "3.4.1",
+  "version": "3.5.0",
   "description": "Client mod for Slack",
   "license": "GPL-3.0-or-later",
   "private": true,
@@ -31,9 +31,9 @@
     "format": "biome format --write .",
     "lint": "biome lint .",
     "typecheck": "tsc --noEmit",
-    "check": "biome check . && tsc --noEmit && tsc -p server",
+    "check": "biome check . && tsc --noEmit && tsc -p server && node scripts/readme.ts --check",
     "readme": "node scripts/readme.ts",
-    "fix": "biome check --write . && tsc --noEmit",
+    "fix": "node scripts/readme.ts && biome check --write . && tsc --noEmit",
     "server:dev": "node scripts/build.ts taut extension userscript versions server && wrangler dev --config server/wrangler.jsonc --var \"VERSIONS:$(cat dist/server-versions.json)\"",
     "server:deploy": "wrangler deploy --config server/wrangler.jsonc --var \"VERSIONS:$(cat dist/server-versions.json)\""
   },

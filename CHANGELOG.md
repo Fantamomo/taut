@@ -9,6 +9,10 @@ Each release is a `## x.y.z` heading, and each change is one bullet:
 - `- **Plugin Name**: Fixed what was broken` for a plugin fix
 - `- What changed` for a change to Taut itself
 
+## 3.5.0
+
+- **Better Typing Indicator** (new plugin): Shows as many typing people as possible and lets you view their profiles
+
 ## 3.4.0
 
 - **Private Channel**: Right-click a hidden channel's mention to give it a local name
