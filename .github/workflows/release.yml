@@ -69,6 +69,13 @@ jobs:
         if: steps.gate.outputs.taut == 'true'
         run: npm run build
 
+      - name: Build standalone plugins
+        if: steps.gate.outputs.taut == 'true'
+        run: |
+          for plugin in AppHomeGate.tsx HackatimeStats.tsx InstalledApps.tsx UserMemberships.tsx; do
+            npm run build:user-plugin -- plugins/$plugin dist/${plugin%.tsx}.js
+          done
+
       - name: Update rolling releases
         if: steps.gate.outputs.publish == 'true'
         env:
@@ -97,8 +104,7 @@ jobs:
         uses: actions/attest@v4
         with:
           subject-path: |
-            dist/taut.js
-            dist/taut.debug.js
+            dist/*.js
             dist/userscript/*.user.js
             dist/extension/*.zip
 
@@ -108,8 +114,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload latest --clobber \
-            dist/taut.js \
-            dist/taut.debug.js \
+            dist/*.js \
             dist/userscript/*.user.js \
             dist/extension/*.zip
 
@@ -173,7 +178,7 @@ jobs:
             exit 0
           fi
           gh release download latest --dir dist --clobber \
-            --pattern taut.js --pattern taut.debug.js
+            --pattern taut.js --pattern taut.debug.js --pattern "*.js"
           gh release download latest --dir dist/userscript --clobber --pattern taut.user.js
           gh release download latest --dir dist/extension --clobber --pattern taut-chrome.zip
           gh release download latest --dir dist/extension/signed --clobber \
