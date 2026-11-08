@@ -21,9 +21,17 @@ Read the PRs to see what the plugins do.
 
 ## I want them!
 
-Good, it simple, you need Taut, download it from [here](https://github.com/jeremy46231/taut).
+Good, it simple, you need Taut, download it from [here](https://github.com/jeremy46231/taut),
+while you could also download it from my release page (if you are wondering [here](https://github.com/Fantamomo/taut/releases/tag/latest))
+i dont recommend it because [@jeremy46231](https://github.com/jeremy46231) signed the builds so you dont get the virus warnings.
 
-After successfully downloaded it and logging in. Click in the menu bar on the `Taut` button and select `Change App Source`. A menu will open, click into the `App bundle URL` field and paste the URL into it:
+After successfully downloaded it and logging in, check what you donwloaded and follow the steps for each platform:
+
+* **Desktop**: Click in the menu bar on the `Taut` button and select `Change App Source`.
+* **Userscript**: Tampermonkey icon while on Slack then `Options` or [taut.jer.app/options](https://taut.jer.app/options)
+* **Extension**: Manage extensions and then Taut, and then something like `Options`/`Config` or if available press the Taut icon next to the search bar and then `Options`/`Config`
+
+In the now opened window paste the following URL:
 
 ```
 https://github.com/Fantamomo/taut/releases/download/latest/taut.js
