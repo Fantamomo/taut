@@ -200,12 +200,12 @@ export default class HackatimeStats extends TautPlugin<typeof HackatimeStats> {
   private useStats(userId: string | undefined): HackatimeStatsData | null {
     const eligible = this.isEligible(userId)
     const [stats, setStats] = React.useState<HackatimeStatsData | null>(() =>
-      eligible ? (this.statsCache.get(userId!) ?? null) : null
+      eligible ? (this.statsCache.get(userId) ?? null) : null
     )
 
     React.useEffect(() => {
       if (!eligible) return
-      this.fetchStats(userId!)
+      this.fetchStats(userId)
         .then(setStats)
         .catch(() => {})
     }, [userId, eligible])
