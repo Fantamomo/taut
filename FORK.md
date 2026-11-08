@@ -21,11 +21,16 @@ Read the PRs to see what the plugins do.
 
 ## I want them!
 
-Good, it simple, you need Taut, download it from [here](https://github.com/jeremy46231/taut),
+Good, it simple, there are to ways:
+
+But before that, you need taut:  
+Download it from [here](https://github.com/jeremy46231/taut),
 while you could also download it from my release page (if you are wondering [here](https://github.com/Fantamomo/taut/releases/tag/latest))
 i dont recommend it because [@jeremy46231](https://github.com/jeremy46231) signed the builds so you dont get the virus warnings.
 
-After successfully downloaded it and logging in, check what you donwloaded and follow the steps for each platform:
+### Way one: The simplest way
+
+After successfully downloaded it and logging in, check what you downloaded and follow the steps for each platform:
 
 * **Desktop**: Click in the menu bar on the `Taut` button and select `Change App Source`.
 * **Userscript**: Tampermonkey icon while on Slack then `Options` or [taut.jer.app/options](https://taut.jer.app/options)
@@ -45,3 +50,20 @@ And search for the plugins and enable them.
 The easiest way to check if they works, is to any user profile and scroll down to the bottom of the page. You should see all installed apps, the Hackatime stats, the user memberships.
 
 Now you can enjoy them! (Please leave feedback)
+
+### Way two: The other way
+
+> Sometimes the first does not work and fails with an CORS error, i dont know why, or how and i wasnt able to reproduce it,
+so if it happens to you, please let me know.
+
+On the release page, there are also the plugins in JS, which you can download. After that open the slack settings, go to taut
+then open the `Advanced` tab, scroll down to `Install a plugin` and press `Choose file...` and select the downloaded file.
+
+You might have seen that there is also a `or paste a URL to a .js file` input filed. Just use the following urls:
+
+```
+https://github.com/Fantamomo/taut/releases/download/latest/AppHomeGate.js
+https://github.com/Fantamomo/taut/releases/download/latest/HackatimeStats.js
+https://github.com/Fantamomo/taut/releases/download/latest/InstalledApps.js
+https://github.com/Fantamomo/taut/releases/download/latest/UserMemberships.js
+```
