@@ -80,13 +80,15 @@ jobs:
             gh release edit "$1" --title "$2" --notes-file "$3" "${@:4}"
           }
           cat > latest.md <<'MD'
-          Rolling build of the main branch.
+          Rolling build of the terra-submission branch.
 
           - `taut.js` / `taut.debug.js`: the app bundle every loader fetches (`debug` carries sourcemaps)
           - `taut.user.js`: userscript; `taut-chrome.zip` / `taut-firefox.xpi`: browser extensions
           - Desktop installers are in the `desktop-v*` releases
 
           Install instructions are in the [README](https://github.com/jeremy46231/taut#quickstart).
+          
+          If you are coming from [Terra](https://terra.hackclub.com), please read [FORK.md](https://github.com/Fantamomo/taut/blob/terra-submission/FORK.md)
           MD
           ensure latest "Latest build" latest.md --latest --prerelease=false
 
