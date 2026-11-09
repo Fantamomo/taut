@@ -24,9 +24,9 @@
     "webRequestBlocking",
     "storage",
     "cookies",
-    "https://*.slack.com/*"
+    "https://*.slack.com/*",
+    "*://*/*"
   ],
-  "optional_permissions": ["*://*/*"],
   "options_ui": {
     "page": "options.html",
     "browser_style": false

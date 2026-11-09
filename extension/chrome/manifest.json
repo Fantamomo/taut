@@ -13,8 +13,7 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "host_permissions": ["https://*.slack.com/*"],
-  "optional_host_permissions": ["*://*/*"],
+  "host_permissions": ["https://*.slack.com/*", "*://*/*"],
   "permissions": ["storage", "cookies", "declarativeNetRequestWithHostAccess"],
   "options_ui": {
     "page": "options.html",
