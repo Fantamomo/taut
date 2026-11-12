@@ -96,3 +96,14 @@ The user memberships plugin shown on a user with a lot of channels (The plugin n
 
 ![AppHomeGate](./docs/fork-img/app-home-gate.png)  
 This banner is shown on every app home, to block the app home event from be sent to the app (you can allow it)
+
+## How do I made them?
+
+Well taut has a fantastic api which lets me do most of this (like injecting code into the UI).
+
+I wrote it in TS (with react those the `.tsx`) and if you want to see the code of the plugins, here it is:
+
+- [App Home Gate](./plugins/AppHomeGate.tsx)
+- [Installed Apps](./plugins/InstalledApps.tsx)
+- [User Memberships](./plugins/UserMemberships.tsx)
+- [Hackatime Stats](./plugins/HackatimeStats.tsx)
