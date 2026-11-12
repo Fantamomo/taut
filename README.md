@@ -1,5 +1,6 @@
+> [!IMPORTANT]
 > _The following is the Taut README.md from [jeremy46231/taut](https://github.com/jeremy46231/taut)._  
-> _For the fork instructions see [FORK.md](FORK.md)_
+> _For the instructions and description of this fork see [FORK.md](FORK.md)_
 
 <h1 align="center">
   <img src="assets/logo.png" alt="" width="128" /><br />

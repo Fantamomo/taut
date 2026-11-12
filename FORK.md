@@ -69,3 +69,30 @@ https://github.com/Fantamomo/taut/releases/download/latest/HackatimeStats.js
 https://github.com/Fantamomo/taut/releases/download/latest/InstalledApps.js
 https://github.com/Fantamomo/taut/releases/download/latest/UserMemberships.js
 ```
+
+## But why did I do this?
+
+Well i wanted this features, but taut or slick didn't have them. So i made them myself.
+Also made PRs to the upstream repo, but they are still not merged.
+
+## I want to see them before I install them?
+
+Yeah sure, here are some screenshots:
+
+![HackatimeStats](./docs/fork-img/hackatime-stats.png)
+The hackatime stats plugin shown on the user profile (that are my stats)
+
+![Installed Apps](./docs/fork-img/installed-apps.png)
+All the apps I have installed on my Slack account
+
+![Installed Apps at-channel](./docs/fork-img/installed-apps-at-channel.png)
+This are all the users that authed @at-channel, and also in which channels @at-channel is
+
+![UserMemberships](./docs/fork-img/user-memberships.png)
+All the channels I am member of (no I am not going to show you my private channels or DMs)
+
+![UserMemberships11267](./docs/fork-img/user-memberships-11267.png)
+The user memberships plugin shown on a user with a lot of channels (The plugin needs 16 requests to load all of them)
+
+![AppHomeGate](./docs/fork-img/app-home-gate.png)
+This banner is shown on every app home, to block the app home event from be sent to the app (you can allow it)
